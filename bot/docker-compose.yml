@@ -1,0 +1,11 @@
+services:
+  armastats:
+    build: .
+    container_name: armastats
+    restart: unless-stopped
+    env_file: .env
+    # Порт открыт только для самого хоста. Снаружи доступ идёт через Caddy.
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - ./data:/app/data
