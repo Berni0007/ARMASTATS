@@ -14,7 +14,7 @@ class ZST_RestCallback : RestCallback
 	//------------------------------------------------------------------------------------------------
 	protected void HandleSuccess(RestCallback cb)
 	{
-		Print("[ZarubaStats] Отправлено: " + m_sType + ", HTTP " + cb.GetHttpCode() + " -> " + cb.GetData());
+		Print("[ZarubaStats] Отправлено: " + m_sType + ", HTTP " + cb.GetHttpCode());
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -31,11 +31,13 @@ class ZST_RestCallback : RestCallback
 }
 
 //! Отправка событий на хост статистики.
+//! Использование: ctx = Begin("kill"); ctx.WriteValue(...); Send("kill", ctx);
 class ZST_Api
 {
 	protected static ref ZST_Api s_Instance;
 
 	protected ref ZST_Config m_Config;
+	protected string m_sMatchId;
 	// Колбэки держим в памяти, пока запрос не завершится.
 	protected ref array<ref ZST_RestCallback> m_aCallbacks = {};
 
@@ -51,7 +53,7 @@ class ZST_Api
 	//------------------------------------------------------------------------------------------------
 	void ZST_Api()
 	{
-		ReloadConfig();
+		m_Config = ZST_Config.Load();
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -69,14 +71,28 @@ class ZST_Api
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Шлёт событие без дополнительных данных.
-	void SendEvent(string type)
+	//! Новый матч: ID = serverId + время старта. Пишется в каждое событие.
+	string StartMatch()
+	{
+		m_sMatchId = m_Config.m_sServerId + "-" + System.GetUnixTime();
+		return m_sMatchId;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	string GetMatchId()
+	{
+		return m_sMatchId;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Начинает событие: пишет заголовок и открывает объект data. Null, если мод не настроен.
+	JsonSaveContext Begin(string type)
 	{
 		string problem = m_Config.GetProblem();
 		if (!problem.IsEmpty())
 		{
 			Print("[ZarubaStats] Мод не настроен (" + problem + "): проверь " + ZST_Config.FILE, LogLevel.WARNING);
-			return;
+			return null;
 		}
 
 		JsonSaveContext json = new JsonSaveContext();
@@ -84,8 +100,27 @@ class ZST_Api
 		json.WriteValue("serverId", m_Config.m_sServerId);
 		json.WriteValue("type", type);
 		json.WriteValue("ts", System.GetUnixTime());
+		json.WriteValue("matchId", m_sMatchId);
+		json.StartObject("data");
+		return json;
+	}
 
+	//------------------------------------------------------------------------------------------------
+	//! Закрывает объект data и отправляет событие.
+	void Send(string type, JsonSaveContext json)
+	{
+		if (!json)
+			return;
+
+		json.EndObject();
 		Post(type, json.SaveToString());
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Событие без дополнительных данных.
+	void SendEvent(string type)
+	{
+		Send(type, Begin(type));
 	}
 
 	//------------------------------------------------------------------------------------------------

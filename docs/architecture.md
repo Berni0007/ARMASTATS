@@ -25,7 +25,18 @@
 }
 ```
 
-Типы событий (план): `ping`, `match_start`, `player_join`, `player_leave`, `player_faction`, `kill`, `match_end`.
+Каждое событие несёт `matchId` (serverId + время старта матча).
+
+| type | data |
+|---|---|
+| `match_start` | `world` |
+| `player_join` | `playerId`, `uid`, `name` |
+| `player_leave` | `playerId`, `uid`, `name` |
+| `player_spawn` | `playerId`, `uid`, `name`, `faction` |
+| `kill` | `relation`, `teamKill`, `victim*` и `killer*` (`Id`, `Uid`, `Name`, `Type`, `Faction`), `weapon`, `distance`, `pos` |
+| `match_end` | `durationSec`, `endReason`, `winners` (ключи фракций) |
+
+`kill` шлётся, если жертва или убийца — игрок. ИИ против ИИ не пишется.
 
 ## Идентификатор игрока
 

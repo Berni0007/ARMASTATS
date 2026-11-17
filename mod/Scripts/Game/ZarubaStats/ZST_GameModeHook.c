@@ -1,4 +1,5 @@
 //! Точка входа мода: цепляемся к базовому гейммоду, чтобы работать на любом сценарии.
+//! Все события собираются только на сервере.
 modded class SCR_BaseGameMode
 {
 	//------------------------------------------------------------------------------------------------
@@ -6,13 +7,156 @@ modded class SCR_BaseGameMode
 	{
 		super.OnGameStart();
 
-		// Только сервер.
 		if (!IsMaster())
 			return;
 
-		Print("[ZarubaStats] Загружен. Отправляю ping на хост.");
 		ZST_Api api = ZST_Api.GetInstance();
 		api.ReloadConfig();
-		api.SendEvent("ping");
+		string matchId = api.StartMatch();
+		Print("[ZarubaStats] Загружен. Матч " + matchId);
+
+		// Подписки. Через инвокеры, а не override, чтобы не зависеть от сигнатур методов гейммода.
+		GetOnPlayerRegistered().Insert(ZST_OnPlayerRegistered);
+		GetOnPlayerDisconnected().Insert(ZST_OnPlayerDisconnected);
+		GetOnPlayerSpawned().Insert(ZST_OnPlayerSpawned);
+		GetOnControllableDestroyed().Insert(ZST_OnControllableDestroyed);
+
+		JsonSaveContext json = api.Begin("match_start");
+		if (json)
+		{
+			json.WriteValue("world", GetGame().GetWorldFile());
+			api.Send("match_start", json);
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected override void OnGameModeEnd(SCR_GameModeEndData endData)
+	{
+		if (IsMaster())
+			ZST_SendMatchEnd(endData);
+
+		super.OnGameModeEnd(endData);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void ZST_SendMatchEnd(SCR_GameModeEndData endData)
+	{
+		ZST_Api api = ZST_Api.GetInstance();
+		JsonSaveContext json = api.Begin("match_end");
+		if (!json)
+			return;
+
+		json.WriteValue("durationSec", GetElapsedTime());
+
+		if (endData)
+		{
+			json.WriteValue("endReason", endData.GetEndReason());
+
+			array<int> winnerFactionIds = {};
+			endData.GetFactionWinnerIds(winnerFactionIds);
+
+			array<string> winners = {};
+			FactionManager fm = GetGame().GetFactionManager();
+			foreach (int factionId : winnerFactionIds)
+			{
+				if (!fm)
+					break;
+
+				Faction f = fm.GetFactionByIndex(factionId);
+				if (f)
+					winners.Insert(f.GetFactionKey());
+			}
+
+			json.WriteValue("winners", winners);
+		}
+
+		api.Send("match_end", json);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void ZST_OnPlayerRegistered(int playerId)
+	{
+		ZST_Api api = ZST_Api.GetInstance();
+		JsonSaveContext json = api.Begin("player_join");
+		if (!json)
+			return;
+
+		json.WriteValue("playerId", playerId);
+		json.WriteValue("uid", ZST_Utils.GetPlayerUid(playerId));
+		json.WriteValue("name", ZST_Utils.GetPlayerName(playerId));
+		api.Send("player_join", json);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void ZST_OnPlayerDisconnected(int playerId, KickCauseCode cause, int timeout)
+	{
+		ZST_Api api = ZST_Api.GetInstance();
+		JsonSaveContext json = api.Begin("player_leave");
+		if (!json)
+			return;
+
+		json.WriteValue("playerId", playerId);
+		json.WriteValue("uid", ZST_Utils.GetPlayerUid(playerId));
+		json.WriteValue("name", ZST_Utils.GetPlayerName(playerId));
+		api.Send("player_leave", json);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Спавн игрока: фиксируем, за какую сторону он вышел в бой.
+	protected void ZST_OnPlayerSpawned(int playerId, IEntity controlledEntity)
+	{
+		ZST_Api api = ZST_Api.GetInstance();
+		JsonSaveContext json = api.Begin("player_spawn");
+		if (!json)
+			return;
+
+		json.WriteValue("playerId", playerId);
+		json.WriteValue("uid", ZST_Utils.GetPlayerUid(playerId));
+		json.WriteValue("name", ZST_Utils.GetPlayerName(playerId));
+		json.WriteValue("faction", ZST_Utils.GetPlayerFactionKey(playerId));
+		api.Send("player_spawn", json);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Гибель любого управляемого персонажа: игрока или ИИ.
+	protected void ZST_OnControllableDestroyed(notnull SCR_InstigatorContextData ctx)
+	{
+		int victimId = ctx.GetVictimPlayerID();
+		int killerId = ctx.GetKillerPlayerID();
+
+		// ИИ, убитый ИИ, статистике не нужен.
+		if (victimId <= 0 && killerId <= 0)
+			return;
+
+		IEntity victim = ctx.GetVictimEntity();
+		IEntity killer = ctx.GetKillerEntity();
+
+		ZST_Api api = ZST_Api.GetInstance();
+		JsonSaveContext json = api.Begin("kill");
+		if (!json)
+			return;
+
+		json.WriteValue("relation", typename.EnumToString(SCR_ECharacterDeathStatusRelations, ctx.GetVictimKillerRelation()));
+		json.WriteValue("teamKill", ctx.DoesPlayerKillCountAsTeamKill());
+
+		json.WriteValue("victimId", victimId);
+		json.WriteValue("victimUid", ZST_Utils.GetPlayerUid(victimId));
+		json.WriteValue("victimName", ZST_Utils.GetPlayerName(victimId));
+		json.WriteValue("victimType", typename.EnumToString(SCR_ECharacterControlType, ctx.GetVictimCharacterControlType()));
+		json.WriteValue("victimFaction", ZST_Utils.GetEntityFactionKey(victim));
+
+		json.WriteValue("killerId", killerId);
+		json.WriteValue("killerUid", ZST_Utils.GetPlayerUid(killerId));
+		json.WriteValue("killerName", ZST_Utils.GetPlayerName(killerId));
+		json.WriteValue("killerType", typename.EnumToString(SCR_ECharacterControlType, ctx.GetKillerCharacterControlType()));
+		json.WriteValue("killerFaction", ZST_Utils.GetEntityFactionKey(killer));
+
+		json.WriteValue("weapon", ZST_Utils.GetCurrentWeapon(killer));
+		json.WriteValue("distance", ZST_Utils.GetDistance(victim, killer));
+
+		if (victim)
+			json.WriteValue("pos", victim.GetOrigin());
+
+		api.Send("kill", json);
 	}
 }
