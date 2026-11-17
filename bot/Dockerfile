@@ -2,6 +2,7 @@ FROM node:22-alpine
 
 WORKDIR /app
 COPY package.json ./
+RUN npm install --omit=dev --no-audit --no-fund
 COPY src ./src
 
 ENV NODE_ENV=production \
@@ -10,4 +11,4 @@ ENV NODE_ENV=production \
 
 USER node
 EXPOSE 8787
-CMD ["node", "src/server.js"]
+CMD ["node", "--no-warnings=ExperimentalWarning", "src/server.js"]

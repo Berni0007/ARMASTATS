@@ -1,11 +1,16 @@
 'use strict';
 
-// Этап 1: приём событий от мода и запись в журнал. Без внешних зависимостей.
+// Приём событий от мода ZarubaStats, подсчёт статистики, Discord-бот.
 
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+
+const { open } = require('./db');
+const { createIngest } = require('./ingest');
+const { createStats } = require('./stats');
+const { startDiscord } = require('./discord');
 
 const PORT = Number(process.env.PORT || 8787);
 const TOKEN = process.env.STATS_TOKEN || '';
@@ -20,6 +25,33 @@ if (!TOKEN) {
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const eventsFile = path.join(DATA_DIR, 'events.jsonl');
 
+const db = open(path.join(DATA_DIR, 'stats.db'));
+const ingest = createIngest(db);
+const stats = createStats(db);
+
+// Первый запуск с базой: переносим события, накопленные в журнале раньше.
+if (db.prepare('SELECT COUNT(*) AS n FROM events').get().n === 0 && fs.existsSync(eventsFile)) {
+  let n = 0;
+  for (const line of fs.readFileSync(eventsFile, 'utf8').split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      ingest(JSON.parse(line));
+      n++;
+    } catch (e) {
+      console.warn('[import] пропущена строка:', e.message);
+    }
+  }
+  console.log(`[import] из журнала перенесено событий: ${n}`);
+}
+
+const discord = startDiscord(stats, {
+  token: process.env.DISCORD_TOKEN || '',
+  guildId: process.env.DISCORD_GUILD_ID || '',
+  channelId: process.env.DISCORD_CHANNEL_ID || '',
+  minMatchSec: Number(process.env.MATCH_REPORT_MIN_SEC || 60),
+  minPlayers: Number(process.env.MATCH_REPORT_MIN_PLAYERS || 1),
+});
+
 function tokenOk(given) {
   if (typeof given !== 'string') return false;
   const a = Buffer.from(given);
@@ -28,9 +60,8 @@ function tokenOk(given) {
 }
 
 function send(res, code, obj) {
-  const body = JSON.stringify(obj);
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
-  res.end(body);
+  res.end(JSON.stringify(obj));
 }
 
 function readBody(req) {
@@ -73,11 +104,23 @@ const server = http.createServer(async (req, res) => {
       return send(res, 400, { ok: false, error: 'no type' });
     }
 
-    delete event.token; // секрет в журнал не пишем
+    delete event.token; // секрет в журнал и базу не пишем
     event.receivedAt = new Date().toISOString();
     fs.appendFileSync(eventsFile, JSON.stringify(event) + '\n');
+
+    let result;
+    try {
+      result = ingest(event);
+    } catch (e) {
+      console.error(`[event] ошибка записи ${event.type}:`, e);
+      return send(res, 500, { ok: false, error: 'store failed' });
+    }
+
     console.log(`[event] ${event.serverId || '?'} ${event.type}`);
-    return send(res, 200, { ok: true });
+    send(res, 200, { ok: true });
+
+    if (result.matchEnded) discord.reportMatch(result.matchEnded);
+    return;
   }
 
   send(res, 404, { ok: false, error: 'not found' });

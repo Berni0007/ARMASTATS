@@ -1,0 +1,194 @@
+'use strict';
+
+// Подсчёт статистики по таблице kills.
+//
+// Засчитанное убийство: убийца — игрок, жертва — не он сам, не тимкилл.
+// Смерть: любая гибель игрока, включая самоубийство и тимкилл по нему.
+
+const VALID_KILL = `killer_uid <> '' AND team_kill = 0 AND (victim_is_ai = 1 OR victim_uid <> killer_uid)`;
+
+function createStats(db) {
+  const q = {
+    player: db.prepare('SELECT uid, name, first_seen, last_seen FROM players WHERE uid = ?'),
+    findExact: db.prepare('SELECT uid, name FROM players WHERE name = ? COLLATE NOCASE ORDER BY last_seen DESC LIMIT 1'),
+    findLike: db.prepare(
+      "SELECT uid, name FROM players WHERE name LIKE ? ESCAPE '\\' COLLATE NOCASE ORDER BY last_seen DESC LIMIT ?"
+    ),
+
+    kills: db.prepare(
+      `SELECT
+         SUM(CASE WHEN victim_is_ai = 0 THEN 1 ELSE 0 END) AS pvp,
+         SUM(CASE WHEN victim_is_ai = 1 THEN 1 ELSE 0 END) AS ai,
+         MAX(distance) AS longest
+       FROM kills WHERE killer_uid = ? AND ${VALID_KILL}`
+    ),
+    teamKills: db.prepare(
+      `SELECT COUNT(*) AS n FROM kills
+       WHERE killer_uid = ? AND team_kill = 1 AND victim_uid <> killer_uid`
+    ),
+    deaths: db.prepare(
+      `SELECT COUNT(*) AS deaths,
+              SUM(CASE WHEN killer_uid = victim_uid THEN 1 ELSE 0 END) AS suicides
+       FROM kills WHERE victim_uid = ?`
+    ),
+    favWeapon: db.prepare(
+      `SELECT weapon, COUNT(*) AS n FROM kills
+       WHERE killer_uid = ? AND ${VALID_KILL} AND weapon <> ''
+       GROUP BY weapon ORDER BY n DESC LIMIT 1`
+    ),
+    matches: db.prepare('SELECT COUNT(*) AS n FROM match_players WHERE uid = ?'),
+
+    match: db.prepare('SELECT * FROM matches WHERE match_id = ?'),
+    matchPlayers: db.prepare('SELECT uid, name, faction FROM match_players WHERE match_id = ?'),
+    matchKillsBy: db.prepare(
+      `SELECT killer_uid AS uid,
+              COUNT(*) AS kills,
+              SUM(CASE WHEN victim_is_ai = 0 THEN 1 ELSE 0 END) AS pvp,
+              MAX(distance) AS longest
+       FROM kills WHERE match_id = ? AND ${VALID_KILL}
+       GROUP BY killer_uid`
+    ),
+    matchDeathsBy: db.prepare(
+      `SELECT victim_uid AS uid, COUNT(*) AS deaths
+       FROM kills WHERE match_id = ? AND victim_uid <> '' GROUP BY victim_uid`
+    ),
+    matchTeamKills: db.prepare(
+      `SELECT COUNT(*) AS n FROM kills WHERE match_id = ? AND team_kill = 1 AND victim_uid <> killer_uid`
+    ),
+    matchFactionKills: db.prepare(
+      `SELECT killer_faction AS faction, COUNT(*) AS n FROM kills
+       WHERE match_id = ? AND killer_faction <> ''
+         AND team_kill = 0 AND NOT (killer_uid <> '' AND killer_uid = victim_uid)
+       GROUP BY killer_faction`
+    ),
+    matchFactionDeaths: db.prepare(
+      `SELECT victim_faction AS faction, COUNT(*) AS n FROM kills
+       WHERE match_id = ? AND victim_faction <> '' GROUP BY victim_faction`
+    ),
+    markReported: db.prepare('UPDATE matches SET reported = 1 WHERE match_id = ?'),
+
+    top: db.prepare(
+      `SELECT k.killer_uid AS uid, p.name AS name,
+              COUNT(*) AS kills,
+              SUM(CASE WHEN k.victim_is_ai = 0 THEN 1 ELSE 0 END) AS pvp,
+              (SELECT COUNT(*) FROM kills d WHERE d.victim_uid = k.killer_uid) AS deaths
+       FROM (SELECT * FROM kills WHERE ${VALID_KILL}) k
+       JOIN players p ON p.uid = k.killer_uid
+       GROUP BY k.killer_uid
+       ORDER BY kills DESC, deaths ASC
+       LIMIT ?`
+    ),
+  };
+
+  function playerStats(uid) {
+    const p = q.player.get(uid);
+    if (!p) return null;
+
+    const k = q.kills.get(uid);
+    const d = q.deaths.get(uid);
+    const pvp = k.pvp || 0;
+    const ai = k.ai || 0;
+    const deaths = d.deaths || 0;
+
+    return {
+      uid: p.uid,
+      name: p.name,
+      matches: q.matches.get(uid).n,
+      kills: pvp + ai,
+      pvpKills: pvp,
+      aiKills: ai,
+      deaths,
+      suicides: d.suicides || 0,
+      teamKills: q.teamKills.get(uid).n,
+      kd: deaths > 0 ? (pvp + ai) / deaths : pvp + ai,
+      longest: k.longest != null && k.longest > 0 ? k.longest : 0,
+      favWeapon: (q.favWeapon.get(uid) || {}).weapon || '',
+      lastSeen: p.last_seen,
+    };
+  }
+
+  // Поиск игрока по нику: точное совпадение, иначе по части ника.
+  function findPlayer(query) {
+    const name = String(query || '').trim();
+    if (!name) return null;
+    const exact = q.findExact.get(name);
+    if (exact) return exact;
+    const like = q.findLike.all(`%${escapeLike(name)}%`, 1);
+    return like[0] || null;
+  }
+
+  function suggestPlayers(query, limit = 25) {
+    return q.findLike.all(`%${escapeLike(String(query || '').trim())}%`, limit);
+  }
+
+  function matchReport(matchId) {
+    const m = q.match.get(matchId);
+    if (!m) return null;
+
+    const players = new Map();
+    for (const p of q.matchPlayers.all(matchId)) {
+      players.set(p.uid, { uid: p.uid, name: p.name, faction: p.faction, kills: 0, pvp: 0, deaths: 0, longest: 0 });
+    }
+    for (const r of q.matchKillsBy.all(matchId)) {
+      const p = players.get(r.uid);
+      if (!p) continue;
+      p.kills = r.kills;
+      p.pvp = r.pvp;
+      p.longest = r.longest > 0 ? r.longest : 0;
+    }
+    for (const r of q.matchDeathsBy.all(matchId)) {
+      const p = players.get(r.uid);
+      if (p) p.deaths = r.deaths;
+    }
+
+    const factions = {};
+    for (const r of q.matchFactionKills.all(matchId)) {
+      (factions[r.faction] ||= { kills: 0, deaths: 0 }).kills = r.n;
+    }
+    for (const r of q.matchFactionDeaths.all(matchId)) {
+      (factions[r.faction] ||= { kills: 0, deaths: 0 }).deaths = r.n;
+    }
+
+    const list = [...players.values()].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
+
+    return {
+      matchId: m.match_id,
+      serverId: m.server_id,
+      world: m.world || '',
+      durationSec: m.duration_sec || 0,
+      winners: safeJson(m.winners, []),
+      endedAt: m.ended_at,
+      playerCount: players.size,
+      teamKills: q.matchTeamKills.get(matchId).n,
+      factions,
+      players: list,
+    };
+  }
+
+  function top(limit = 10) {
+    return q.top.all(limit).map((r) => ({
+      ...r,
+      kd: r.deaths > 0 ? r.kills / r.deaths : r.kills,
+    }));
+  }
+
+  function markReported(matchId) {
+    q.markReported.run(matchId);
+  }
+
+  return { playerStats, findPlayer, suggestPlayers, matchReport, top, markReported };
+}
+
+function escapeLike(s) {
+  return s.replace(/[\\%_]/g, (c) => '\\' + c);
+}
+
+function safeJson(s, def) {
+  try {
+    return s ? JSON.parse(s) : def;
+  } catch {
+    return def;
+  }
+}
+
+module.exports = { createStats };

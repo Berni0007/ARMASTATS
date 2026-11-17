@@ -84,6 +84,19 @@ modded class SCR_BaseGameMode
 	//------------------------------------------------------------------------------------------------
 	protected void ZST_OnPlayerRegistered(int playerId)
 	{
+		ZST_SendJoin(playerId, 0);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! UUID при первом входе бывает ещё не готов: повторяем через 2 с, до 5 раз.
+	protected void ZST_SendJoin(int playerId, int attempt)
+	{
+		if (ZST_Utils.GetPlayerUid(playerId).IsEmpty() && attempt < 5)
+		{
+			GetGame().GetCallqueue().CallLater(ZST_SendJoin, 2000, false, playerId, attempt + 1);
+			return;
+		}
+
 		ZST_Api api = ZST_Api.GetInstance();
 		JsonSaveContext json = api.Begin("player_join");
 		if (!json)

@@ -62,8 +62,32 @@ curl https://warcon.zaruba-server.online/armastats/health
 }
 ```
 
+## 6. Discord-бот
+
+1. https://discord.com/developers/applications → **New Application** → имя `ZARUBA Stats`.
+2. Вкладка **Bot** → **Reset Token** → скопировать токен.
+3. Вкладка **OAuth2 → URL Generator**: scopes `bot` и `applications.commands`,
+   права `Send Messages`, `Embed Links`. Открыть ссылку и добавить бота на свой сервер Discord.
+4. В Discord включить режим разработчика (Настройки → Расширенные), затем ПКМ по серверу →
+   **Копировать ID сервера**, ПКМ по каналу отчётов → **Копировать ID канала**.
+5. Вписать в `/opt/armastats/bot/.env`:
+
+```
+DISCORD_TOKEN=...
+DISCORD_GUILD_ID=...
+DISCORD_CHANNEL_ID=...
+MATCH_REPORT_MIN_SEC=60
+MATCH_REPORT_MIN_PLAYERS=1
+```
+
+6. Перезапустить: `cd /opt/armastats/bot && docker compose up -d --build`.
+
+Команды в Discord: `/stats ник` (с подсказкой ников), `/top`.
+
 ## Обслуживание
 
 - Журнал: `docker logs -f armastats`
-- События: `/opt/armastats/bot/data/events.jsonl`
+- События (сырой журнал): `/opt/armastats/bot/data/events.jsonl`
+- База статистики: `/opt/armastats/bot/data/stats.db`. При первом запуске с пустой базой
+  события из журнала переносятся в неё автоматически.
 - Обновление: `cd /opt/armastats && git pull && cd bot && docker compose up -d --build`
