@@ -1,4 +1,4 @@
-//! Ответ хоста на отправленное событие.
+//! Ответ хоста на отправленное событие (API 1.9: SetOnSuccess / SetOnError).
 class ZST_RestCallback : RestCallback
 {
 	protected string m_sType;
@@ -7,24 +7,26 @@ class ZST_RestCallback : RestCallback
 	void ZST_RestCallback(string type)
 	{
 		m_sType = type;
+		SetOnSuccess(HandleSuccess);
+		SetOnError(HandleError);
 	}
 
 	//------------------------------------------------------------------------------------------------
-	override void OnSuccess(string data, int dataSize)
+	protected void HandleSuccess(RestCallback cb)
 	{
-		Print("[ZarubaStats] Отправлено: " + m_sType + " -> " + data);
+		Print("[ZarubaStats] Отправлено: " + m_sType + ", HTTP " + cb.GetHttpCode() + " -> " + cb.GetData());
 	}
 
 	//------------------------------------------------------------------------------------------------
-	override void OnError(int errorCode)
+	protected void HandleError(RestCallback cb)
 	{
-		Print("[ZarubaStats] Ошибка отправки " + m_sType + ", код " + errorCode, LogLevel.ERROR);
-	}
+		if (cb.GetRestResult() == ERestResult.EREST_ERROR_TIMEOUT)
+		{
+			Print("[ZarubaStats] Таймаут отправки " + m_sType, LogLevel.ERROR);
+			return;
+		}
 
-	//------------------------------------------------------------------------------------------------
-	override void OnTimeout()
-	{
-		Print("[ZarubaStats] Таймаут отправки " + m_sType, LogLevel.ERROR);
+		Print("[ZarubaStats] Ошибка отправки " + m_sType + ": результат " + typename.EnumToString(ERestResult, cb.GetRestResult()) + ", HTTP " + cb.GetHttpCode() + ", ответ " + cb.GetData(), LogLevel.ERROR);
 	}
 }
 
