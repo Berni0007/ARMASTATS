@@ -13,7 +13,7 @@ modded class SCR_BaseGameMode
 		ZST_Api api = ZST_Api.GetInstance();
 		api.ReloadConfig();
 		string matchId = api.StartMatch();
-		Print("[ZarubaStats] Загружен. Матч " + matchId);
+		Print("[ZarubaStats] Loaded. Match " + matchId);
 
 		// Подписки. Через инвокеры, а не override, чтобы не зависеть от сигнатур методов гейммода.
 		GetOnPlayerRegistered().Insert(ZST_OnPlayerRegistered);

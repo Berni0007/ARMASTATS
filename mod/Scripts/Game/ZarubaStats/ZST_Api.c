@@ -14,7 +14,7 @@ class ZST_RestCallback : RestCallback
 	//------------------------------------------------------------------------------------------------
 	protected void HandleSuccess(RestCallback cb)
 	{
-		Print("[ZarubaStats] Отправлено: " + m_sType + ", HTTP " + cb.GetHttpCode());
+		Print("[ZarubaStats] Sent: " + m_sType + ", HTTP " + cb.GetHttpCode());
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -22,11 +22,11 @@ class ZST_RestCallback : RestCallback
 	{
 		if (cb.GetRestResult() == ERestResult.EREST_ERROR_TIMEOUT)
 		{
-			Print("[ZarubaStats] Таймаут отправки " + m_sType, LogLevel.ERROR);
+			Print("[ZarubaStats] Send timeout: " + m_sType, LogLevel.ERROR);
 			return;
 		}
 
-		Print("[ZarubaStats] Ошибка отправки " + m_sType + ": результат " + typename.EnumToString(ERestResult, cb.GetRestResult()) + ", HTTP " + cb.GetHttpCode() + ", ответ " + cb.GetData(), LogLevel.ERROR);
+		Print("[ZarubaStats] Send failed: " + m_sType + ": result " + typename.EnumToString(ERestResult, cb.GetRestResult()) + ", HTTP " + cb.GetHttpCode() + ", body " + cb.GetData(), LogLevel.ERROR);
 	}
 }
 
@@ -61,7 +61,7 @@ class ZST_Api
 	void ReloadConfig()
 	{
 		m_Config = ZST_Config.Load();
-		Print("[ZarubaStats] Конфиг: apiUrl=" + m_Config.m_sApiUrl + ", serverId=" + m_Config.m_sServerId + ", enabled=" + m_Config.m_bEnabled.ToString());
+		Print("[ZarubaStats] Config: apiUrl=" + m_Config.m_sApiUrl + ", serverId=" + m_Config.m_sServerId + ", enabled=" + m_Config.m_bEnabled.ToString());
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -91,7 +91,7 @@ class ZST_Api
 		string problem = m_Config.GetProblem();
 		if (!problem.IsEmpty())
 		{
-			Print("[ZarubaStats] Мод не настроен (" + problem + "): проверь " + ZST_Config.FILE, LogLevel.WARNING);
+			Print("[ZarubaStats] Not configured (" + problem + "): check " + ZST_Config.FILE, LogLevel.WARNING);
 			return null;
 		}
 
@@ -129,7 +129,7 @@ class ZST_Api
 		RestContext ctx = GetGame().GetRestApi().GetContext(m_Config.m_sApiUrl);
 		if (!ctx)
 		{
-			Print("[ZarubaStats] Не удалось создать RestContext для " + m_Config.m_sApiUrl, LogLevel.ERROR);
+			Print("[ZarubaStats] Failed to create RestContext for " + m_Config.m_sApiUrl, LogLevel.ERROR);
 			return;
 		}
 

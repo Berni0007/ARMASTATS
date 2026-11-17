@@ -18,14 +18,14 @@ class ZST_Config
 		if (!FileIO.FileExists(FILE))
 		{
 			cfg.Save();
-			Print("[ZarubaStats] Создан конфиг по умолчанию: " + FILE, LogLevel.WARNING);
+			Print("[ZarubaStats] Default config created: " + FILE, LogLevel.WARNING);
 			return cfg;
 		}
 
 		JsonLoadContext ctx = new JsonLoadContext();
 		if (!ctx.LoadFromFile(FILE))
 		{
-			Print("[ZarubaStats] Не удалось прочитать " + FILE, LogLevel.ERROR);
+			Print("[ZarubaStats] Failed to read " + FILE, LogLevel.ERROR);
 			return cfg;
 		}
 
@@ -63,10 +63,10 @@ class ZST_Config
 			return "enabled = false";
 
 		if (m_sApiUrl.IsEmpty())
-			return "пустой apiUrl";
+			return "apiUrl is empty";
 
 		if (m_sToken.IsEmpty() || m_sToken == "CHANGE_ME")
-			return "не задан token";
+			return "token is not set";
 
 		return string.Empty;
 	}
