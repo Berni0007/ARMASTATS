@@ -27,6 +27,14 @@ modded class SCR_BaseGameMode
 			json.WriteValue("world", GetGame().GetWorldFile());
 			api.Send("match_start", json);
 		}
+
+		// Игроки, подключившиеся до старта гейммода (перезапуск сценария, Workbench).
+		array<int> players = {};
+		GetGame().GetPlayerManager().GetPlayers(players);
+		foreach (int playerId : players)
+		{
+			ZST_OnPlayerRegistered(playerId);
+		}
 	}
 
 	//------------------------------------------------------------------------------------------------
