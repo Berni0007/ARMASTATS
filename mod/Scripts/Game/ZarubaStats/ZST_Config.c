@@ -52,6 +52,22 @@ class ZST_Config
 	//------------------------------------------------------------------------------------------------
 	bool IsReady()
 	{
-		return m_bEnabled && !m_sApiUrl.IsEmpty() && m_sToken != "CHANGE_ME";
+		return GetProblem().IsEmpty();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Что не так с конфигом. Пустая строка, если всё в порядке. Значение токена не раскрывается.
+	string GetProblem()
+	{
+		if (!m_bEnabled)
+			return "enabled = false";
+
+		if (m_sApiUrl.IsEmpty())
+			return "пустой apiUrl";
+
+		if (m_sToken.IsEmpty() || m_sToken == "CHANGE_ME")
+			return "не задан token";
+
+		return string.Empty;
 	}
 }

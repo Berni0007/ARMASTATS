@@ -11,6 +11,8 @@ modded class SCR_BaseGameMode
 			return;
 
 		Print("[ZarubaStats] Загружен. Отправляю ping на хост.");
-		ZST_Api.GetInstance().SendEvent("ping");
+		ZST_Api api = ZST_Api.GetInstance();
+		api.ReloadConfig();
+		api.SendEvent("ping");
 	}
 }

@@ -51,7 +51,15 @@ class ZST_Api
 	//------------------------------------------------------------------------------------------------
 	void ZST_Api()
 	{
+		ReloadConfig();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Перечитывает конфиг с диска. Вызывается при каждом старте игры.
+	void ReloadConfig()
+	{
 		m_Config = ZST_Config.Load();
+		Print("[ZarubaStats] Конфиг: apiUrl=" + m_Config.m_sApiUrl + ", serverId=" + m_Config.m_sServerId + ", enabled=" + m_Config.m_bEnabled.ToString());
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -64,9 +72,10 @@ class ZST_Api
 	//! Шлёт событие без дополнительных данных.
 	void SendEvent(string type)
 	{
-		if (!m_Config.IsReady())
+		string problem = m_Config.GetProblem();
+		if (!problem.IsEmpty())
 		{
-			Print("[ZarubaStats] Мод не настроен: проверь " + ZST_Config.FILE, LogLevel.WARNING);
+			Print("[ZarubaStats] Мод не настроен (" + problem + "): проверь " + ZST_Config.FILE, LogLevel.WARNING);
 			return;
 		}
 
