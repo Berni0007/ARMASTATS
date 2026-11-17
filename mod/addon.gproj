@@ -1,0 +1,8 @@
+GameProject {
+ ID "ZarubaStats"
+ GUID "94C6ABFF64AD79C7"
+ TITLE "ZARUBA Stats"
+ Dependencies {
+  "58D0FB3206B6F859"
+ }
+}

@@ -1,0 +1,8 @@
+node_modules/
+bot/data/
+.env
+*.log
+*.mdmp
+# Workbench
+mod/resourceDatabase.rdb
+mod/**/*.meta.bak
