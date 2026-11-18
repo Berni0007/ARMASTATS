@@ -15,7 +15,8 @@ const {
   MessageFlags,
 } = require('discord.js');
 const { matchEmbed, playerEmbed, topEmbed } = require('./format');
-const { renderMatch, renderPlayer, renderTop } = require('./render');
+const { renderPlayer, renderTop } = require('./render');
+const { renderDashboard } = require('./dashboard');
 
 const COMMANDS = [
   new SlashCommandBuilder()
@@ -40,12 +41,14 @@ const COMMANDS = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 ].map((c) => c.toJSON());
 
-async function matchMessage(r) {
+// Отчёт о матче: картинка «Статистика боя»; если нарисовать не вышло — обычная карточка.
+async function matchMessage(stats, matchId) {
   try {
-    return { files: [{ attachment: await renderMatch(r), name: 'match.png' }] };
+    const d = stats.matchDashboard(matchId);
+    return { files: [{ attachment: await renderDashboard(d), name: 'match.png' }] };
   } catch (e) {
-    console.error('[render] отчёт матча:', e.message);
-    return { embeds: [matchEmbed(r)] };
+    console.error('[render] дашборд матча:', e.message);
+    return { embeds: [matchEmbed(stats.matchReport(matchId))] };
   }
 }
 
@@ -136,7 +139,7 @@ function startDiscord(stats, cfg) {
     }
 
     try {
-      await sendToChannel(await matchMessage(r));
+      await sendToChannel(await matchMessage(stats, matchId));
       stats.markReported(matchId);
       console.log(`[discord] отчёт ${matchId} отправлен`);
       return { ok: true };

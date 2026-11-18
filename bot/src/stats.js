@@ -53,6 +53,12 @@ function createStats(db) {
       `SELECT victim_uid AS uid, COUNT(*) AS deaths
        FROM kills WHERE match_id = ? AND victim_uid <> '' GROUP BY victim_uid`
     ),
+    matchTeamKillsBy: db.prepare(
+      `SELECT killer_faction AS faction, COUNT(*) AS n FROM kills
+       WHERE match_id = ? AND team_kill = 1 AND victim_uid <> killer_uid AND killer_faction <> ''
+       GROUP BY killer_faction`
+    ),
+    matchPlayersBy: db.prepare('SELECT faction, COUNT(*) AS n FROM match_players WHERE match_id = ? AND faction <> \'\' GROUP BY faction'),
     matchTeamKills: db.prepare(
       `SELECT COUNT(*) AS n FROM kills WHERE match_id = ? AND team_kill = 1 AND victim_uid <> killer_uid`
     ),
@@ -76,6 +82,41 @@ function createStats(db) {
        ON CONFLICT(discord_id) DO UPDATE SET uid = excluded.uid, linked_at = excluded.linked_at`
     ),
     linkGet: db.prepare('SELECT uid FROM links WHERE discord_id = ?'),
+    dSpawns: db.prepare(
+      `SELECT json_extract(payload, '$.data.uid') AS uid, ts FROM events
+       WHERE match_id = ? AND type = 'player_spawn' ORDER BY ts`
+    ),
+    dDeathsTs: db.prepare(`SELECT victim_uid AS uid, ts FROM kills WHERE match_id = ? AND victim_uid <> '' ORDER BY ts`),
+    dTotals: db.prepare(
+      `SELECT
+         SUM(CASE WHEN ${VALID_KILL} THEN 1 ELSE 0 END) AS kills,
+         SUM(CASE WHEN victim_uid <> '' THEN 1 ELSE 0 END) AS deaths,
+         SUM(CASE WHEN ${VALID_KILL} AND hit_zone LIKE 'Head%' THEN 1 ELSE 0 END) AS headshots,
+         MAX(CASE WHEN ${VALID_KILL} THEN distance END) AS longest
+       FROM kills WHERE match_id = ?`
+    ),
+    dBestKills: db.prepare(
+      `SELECT killer_uid AS uid, killer_name AS name, COUNT(*) AS kills,
+              SUM(CASE WHEN hit_zone LIKE 'Head%' THEN 1 ELSE 0 END) AS headshots,
+              MAX(distance) AS longest
+       FROM kills WHERE match_id = ? AND ${VALID_KILL}
+       GROUP BY killer_uid`
+    ),
+    dWeapons: db.prepare(
+      `SELECT weapon, COUNT(*) AS n FROM kills
+       WHERE match_id = ? AND ${VALID_KILL} AND weapon <> ''
+       GROUP BY weapon ORDER BY n DESC LIMIT 5`
+    ),
+    dSources: db.prepare(
+      `SELECT CASE WHEN weapon_source = '' THEN 'hands' WHEN weapon_source = 'damage' THEN 'hands' ELSE weapon_source END AS src,
+              COUNT(*) AS n
+       FROM kills WHERE match_id = ? AND ${VALID_KILL} GROUP BY src`
+    ),
+    dTimeline: db.prepare(
+      `SELECT ts, killer_faction AS faction FROM kills
+       WHERE match_id = ? AND team_kill = 0 AND killer_faction <> ''
+         AND NOT (killer_uid <> '' AND killer_uid = victim_uid)`
+    ),
     lastMatch: db.prepare('SELECT match_id FROM matches WHERE ended_at IS NOT NULL ORDER BY ended_at DESC LIMIT 1'),
 
     top: db.prepare(
@@ -163,6 +204,12 @@ function createStats(db) {
     for (const r of q.matchFactionDeaths.all(matchId)) {
       (factions[r.faction] ||= { kills: 0, deaths: 0 }).deaths = r.n;
     }
+    for (const r of q.matchTeamKillsBy.all(matchId)) {
+      (factions[r.faction] ||= { kills: 0, deaths: 0 }).teamKills = r.n;
+    }
+    for (const r of q.matchPlayersBy.all(matchId)) {
+      (factions[r.faction] ||= { kills: 0, deaths: 0 }).players = r.n;
+    }
 
     const list = [...players.values()].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
 
@@ -189,6 +236,77 @@ function createStats(db) {
 
   function markReported(matchId) {
     q.markReported.run(matchId);
+  }
+
+  // Всё для картинки «Статистика боя».
+  function matchDashboard(matchId) {
+    const r = matchReport(matchId);
+    if (!r) return null;
+    const m = q.match.get(matchId);
+    const start = m.started_at || 0;
+    const end = m.ended_at || start + Math.round(r.durationSec);
+
+    // Возрождения и среднее время жизни: от спавна до ближайшей смерти этого игрока.
+    const spawns = q.dSpawns.all(matchId).filter((s) => s.uid);
+    const deaths = q.dDeathsTs.all(matchId);
+    const byUid = new Map();
+    for (const d of deaths) {
+      if (!byUid.has(d.uid)) byUid.set(d.uid, []);
+      byUid.get(d.uid).push(d.ts);
+    }
+    let lifeSum = 0;
+    let lifeN = 0;
+    for (const sp of spawns) {
+      const list = byUid.get(sp.uid) || [];
+      const death = list.find((t) => t >= sp.ts);
+      const until = death != null ? death : end;
+      if (until > sp.ts) {
+        lifeSum += until - sp.ts;
+        lifeN++;
+      }
+    }
+
+    const t = q.dTotals.get(matchId);
+    const kills = t.kills || 0;
+
+    // Лучшие: по убийствам, по дальнему выстрелу, по хедшотам.
+    const shooters = q.dBestKills.all(matchId).map((p) => ({ ...p, deaths: (r.players.find((x) => x.uid === p.uid) || {}).deaths || 0 }));
+    const pick = (key) => [...shooters].sort((a, b) => (b[key] || 0) - (a[key] || 0) || b.kills - a.kills)[0] || null;
+    const best = {
+      shooter: pick('kills'),
+      sniper: pick('longest'),
+      marksman: shooters.some((p) => p.headshots > 0) ? pick('headshots') : null,
+    };
+
+    const weapons = q.dWeapons.all(matchId).map((w) => ({ weapon: w.weapon, kills: w.n, share: kills ? w.n / kills : 0 }));
+    const sources = { hands: 0, explosive: 0, vehicle: 0 };
+    for (const s of q.dSources.all(matchId)) sources[s.src] = (sources[s.src] || 0) + s.n;
+
+    // Убийства по минутам для каждой стороны.
+    const minutes = Math.max(1, Math.ceil((end - start) / 60));
+    const timeline = {};
+    for (const k of q.dTimeline.all(matchId)) {
+      const i = Math.min(minutes - 1, Math.max(0, Math.floor((k.ts - start) / 60)));
+      (timeline[k.faction] ||= new Array(minutes).fill(0))[i]++;
+    }
+
+    return {
+      ...r,
+      startedAt: start,
+      totals: {
+        kills,
+        deaths: t.deaths || 0,
+        spawns: spawns.length,
+        headshots: t.headshots || 0,
+        longest: t.longest > 0 ? t.longest : 0,
+        avgLifeSec: lifeN ? lifeSum / lifeN : 0,
+      },
+      best,
+      weapons,
+      sources,
+      timeline,
+      minutes,
+    };
   }
 
   // Код привязки: 6 символов без похожих букв и цифр, живёт 10 минут.
@@ -231,7 +349,7 @@ function createStats(db) {
 
   return {
     playerStats, findPlayer, suggestPlayers, matchReport, top, markReported, lastMatchId,
-    createLinkCode, useLinkCode, linkedUid,
+    createLinkCode, useLinkCode, linkedUid, matchDashboard,
   };
 }
 

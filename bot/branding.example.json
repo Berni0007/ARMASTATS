@@ -1,0 +1,13 @@
+{
+  "title": "СТАТИСТИКА БОЯ",
+  "subtitle": "Матч завершён",
+  "footer": "ARMASTATS",
+  "factions": {
+    "US":   { "name": "США",  "subtitle": "Силы США",        "color": "#4f86c6" },
+    "USSR": { "name": "СССР", "subtitle": "Советская армия", "color": "#c84b3b" },
+    "FIA":  { "name": "FIA",  "subtitle": "Партизаны",       "color": "#6fae5f" }
+  },
+  "worlds": {
+    "ZARUBAFORESTFORT2048_Ivent": "Forest Fort"
+  }
+}
