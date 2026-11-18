@@ -3,10 +3,12 @@
 // Картинка «Статистика боя» (1920×1080) в раскладке концепта: шапка, баннер счёта,
 // общая статистика, лучшие игроки, стороны, вооружение, ход боя.
 
-const { createCanvas } = require('@napi-rs/canvas');
+const path = require('node:path');
+const { createCanvas, GlobalFonts } = require('@napi-rs/canvas');
 const { weaponName } = require('./format');
 const { loadBranding } = require('./branding');
 require('./render'); // регистрирует шрифты
+GlobalFonts.registerFromPath(path.join(__dirname, '..', 'assets', 'fonts', 'Roboto.ttf'), 'Roboto');
 
 const W = 1920;
 const H = 1080;
@@ -25,12 +27,13 @@ const C = {
 };
 const TZ = process.env.TZ_NAME || 'Europe/Moscow';
 
-function hms(sec) {
+function hms(sec, full = false) {
   const s = Math.max(0, Math.round(sec || 0));
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const ss = s % 60;
   const p = (n) => String(n).padStart(2, '0');
+  if (full) return `${p(h)}:${p(m)}:${p(ss)}`;
   return h ? `${h}:${p(m)}:${p(ss)}` : `${p(m)}:${p(ss)}`;
 }
 
@@ -53,7 +56,7 @@ function stamp(unix) {
 
 // ---------------------------------------------------------------------------------------------
 function makeDraw(x) {
-  const font = (px, w = 400) => `${w} ${px}px Oswald`;
+  const font = (px, w = 400) => `${w} ${px}px Roboto`;
   const T = (s, px, X, Y, col = C.white, w = 400, al = 'left', maxWidth) => {
     x.font = font(px, w);
     x.fillStyle = col;
@@ -68,10 +71,10 @@ function makeDraw(x) {
   };
   const D = (s, px, X, Y, col = C.white, al = 'left', maxWidth) => {
     let size = px;
-    x.font = `${size}px "Russo One"`;
+    x.font = `800 ${size}px Roboto`;
     while (maxWidth && size > px * 0.5 && x.measureText(s).width > maxWidth) {
       size -= 2;
-      x.font = `${size}px "Russo One"`;
+      x.font = `800 ${size}px Roboto`;
     }
     x.fillStyle = col;
     x.textAlign = al;
@@ -230,58 +233,73 @@ async function renderDashboard(d) {
     x.fillStyle = 'rgba(12,14,17,0.72)';
     x.fillRect(0, 0, W, H);
   } else {
+    // Без фото: тёмное небо с дымкой, как в сумерках над полем боя
+    const sky = x.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#1d242b');
+    sky.addColorStop(0.45, '#14191e');
+    sky.addColorStop(1, '#0e1114');
+    x.fillStyle = sky;
+    x.fillRect(0, 0, W, H);
+    for (const [cx, cy, r, a] of [[260, 120, 520, 0.10], [1650, 90, 480, 0.08], [980, 40, 700, 0.05]]) {
+      const h = x.createRadialGradient(cx, cy, 0, cx, cy, r);
+      h.addColorStop(0, `rgba(170,180,190,${a})`);
+      h.addColorStop(1, 'rgba(170,180,190,0)');
+      x.fillStyle = h;
+      x.fillRect(0, 0, W, H);
+    }
     topo(x);
   }
 
-  // Шапка
+  // Шапка: лого | заголовок | плашка с картой, игроками, длительностью
   if (b.logo) {
-    x.save();
-    rr(36, 22, 92, 92, 14);
-    x.clip();
-    const s = Math.max(92 / b.logo.width, 92 / b.logo.height);
-    x.drawImage(b.logo, 36 + (92 - b.logo.width * s) / 2, 22 + (92 - b.logo.height * s) / 2, b.logo.width * s, b.logo.height * s);
-    x.restore();
+    const lw = 200, lh = 92;
+    const sc = Math.min(lw / b.logo.width, lh / b.logo.height);
+    x.drawImage(b.logo, 40 + (lw - b.logo.width * sc) / 2, 20 + (lh - b.logo.height * sc) / 2, b.logo.width * sc, b.logo.height * sc);
   }
-  x.fillStyle = C.line;
-  x.fillRect(156, 30, 2, 76);
-  D(b.title, 54, 186, 52, C.white, 'left', 760);
-  T(b.subtitle, 30, 188, 98, C.grey);
+  x.fillStyle = 'rgba(255,255,255,0.25)';
+  x.fillRect(282, 30, 2, 76);
+  x.save();
+  x.shadowColor = 'rgba(255,255,255,0.35)';
+  x.shadowBlur = 18;
+  D(b.title, 56, 330, 50, '#e9ecef', 'left', 640);
+  x.restore();
+  T(b.subtitle, 30, 332, 96, '#aeb4bb', 400);
 
-  const info = [b.world(d.world), `${d.playerCount} ${plural(d.playerCount, 'игрок', 'игрока', 'игроков')}`, `Длительность ${hms(d.durationSec)}`];
-  x.font = '400 26px Oswald';
-  const iw = info.reduce((a, s) => a + x.measureText(s).width, 0) + 120 + 60 + 30;
-  const ix = W - 36 - iw;
-  rr(ix, 36, iw, 58, 29);
-  x.fillStyle = 'rgba(255,255,255,0.05)';
+  const info = [b.world(d.world), `${d.playerCount} ${plural(d.playerCount, 'игрок', 'игрока', 'игроков')}`, `Длительность ${hms(d.durationSec, true)}`];
+  x.font = '400 24px Roboto';
+  const iw = info.reduce((a, s) => a + x.measureText(s).width, 0) + 2 * 44 + 96;
+  const ix = W - 40 - iw;
+  rr(ix, 34, iw, 56, 16);
+  x.fillStyle = 'rgba(20,24,29,0.72)';
   x.fill();
-  x.strokeStyle = C.line;
+  x.strokeStyle = 'rgba(255,255,255,0.22)';
+  x.lineWidth = 1.5;
   x.stroke();
-  // Метка на карте перед названием
-  x.fillStyle = C.grey;
+  // Метка на карте
+  x.fillStyle = '#c9ced4';
   x.beginPath();
-  x.arc(ix + 36, 60, 9, Math.PI * 0.85, Math.PI * 2.15);
-  x.lineTo(ix + 36, 77);
+  x.arc(ix + 34, 56, 9, Math.PI * 0.85, Math.PI * 2.15);
+  x.lineTo(ix + 34, 73);
   x.closePath();
   x.fill();
-  x.fillStyle = '#1b1e23';
+  x.fillStyle = '#1b1f24';
   x.beginPath();
-  x.arc(ix + 36, 60, 3.5, 0, 7);
+  x.arc(ix + 34, 56, 3.5, 0, 7);
   x.fill();
-  let px = ix + 60;
+  let px = ix + 64;
   info.forEach((s, i) => {
-    px += T(s, 26, px, 65);
+    px += T(s, 24, px, 62, '#e3e6ea', 400);
     if (i < info.length - 1) {
-      x.fillStyle = C.dim;
-      x.fillRect(px + 29, 50, 2, 30);
-      px += 60;
+      x.fillStyle = 'rgba(255,255,255,0.35)';
+      x.fillRect(px + 21, 50, 1.5, 26);
+      px += 44;
     }
   });
 
-  // Две главные стороны: по участию в бою
+  // Стороны: порядок из настроек (НАТО слева, РФ справа), остальные — по участию в бою
   const sides = Object.entries(d.factions)
     .map(([key, v]) => ({ key, ...v, f: b.faction(key) }))
     .sort((p, q) => {
-      // Сначала по порядку из настроек (НАТО слева, РФ справа), остальные — по участию в бою.
       const ip = b.order.indexOf(p.key);
       const iq = b.order.indexOf(q.key);
       if (ip !== -1 || iq !== -1) return (ip === -1 ? 99 : ip) - (iq === -1 ? 99 : iq);
@@ -290,84 +308,171 @@ async function renderDashboard(d) {
   const neutral = { name: '', subtitle: '', color: '#555a62' };
   const left = sides[0] || { key: '', kills: 0, deaths: 0, f: neutral };
   const right = sides[1] || null;
+  const rightColor = right ? right.f.color : '#555a62';
 
   // Баннер счёта
-  const BX = 36, BY = 130, BW = W - 72, BH = 190;
-  rr(BX, BY, BW, BH, 16);
+  const BX = 236, BY = 116, BW = W - 472, BH = 196;
+  const seamL = BX + BW * 0.34, seamR = BX + BW * 0.66, skew = 42;
   x.save();
+  rr(BX, BY, BW, BH, 18);
   x.clip();
-  const g = x.createLinearGradient(BX, 0, BX + BW, 0);
-  g.addColorStop(0, shade(left.f.color, 0.55));
-  g.addColorStop(0.42, shade(left.f.color, 0.22));
-  g.addColorStop(0.58, shade(right ? right.f.color : '#333333', 0.22));
-  g.addColorStop(1, shade(right ? right.f.color : '#333333', 0.55));
+  // Левая сторона
+  let g = x.createLinearGradient(BX, 0, seamL, 0);
+  g.addColorStop(0, shade(left.f.color, 0.42));
+  g.addColorStop(1, shade(left.f.color, 0.22));
   x.fillStyle = g;
   x.fillRect(BX, BY, BW, BH);
-  // Солдат из шаблона по краям, приглушённо
+  // Центр — тёмный, с наклонными краями
+  x.fillStyle = '#10141a';
+  x.beginPath();
+  x.moveTo(seamL + skew, BY);
+  x.lineTo(seamR + skew, BY);
+  x.lineTo(seamR - skew, BY + BH);
+  x.lineTo(seamL - skew, BY + BH);
+  x.closePath();
+  x.fill();
+  // Правая сторона
+  g = x.createLinearGradient(seamR, 0, BX + BW, 0);
+  g.addColorStop(0, shade(rightColor, 0.22));
+  g.addColorStop(1, shade(rightColor, 0.42));
+  x.fillStyle = g;
+  x.beginPath();
+  x.moveTo(seamR + skew, BY);
+  x.lineTo(BX + BW, BY);
+  x.lineTo(BX + BW, BY + BH);
+  x.lineTo(seamR - skew, BY + BH);
+  x.closePath();
+  x.fill();
+  // Мягкий свет снизу, как волна флага
+  const wave = (col, x0, x1) => {
+    const wg = x.createLinearGradient(0, BY + BH * 0.55, 0, BY + BH);
+    wg.addColorStop(0, 'rgba(0,0,0,0)');
+    wg.addColorStop(1, col);
+    x.fillStyle = wg;
+    x.beginPath();
+    x.moveTo(x0, BY + BH);
+    x.bezierCurveTo(x0 + (x1 - x0) * 0.3, BY + BH * 0.55, x0 + (x1 - x0) * 0.6, BY + BH * 0.95, x1, BY + BH * 0.6);
+    x.lineTo(x1, BY + BH);
+    x.closePath();
+    x.fill();
+  };
+  wave(shade(left.f.color, 0.75).replace('rgb', 'rgba').replace(')', ',0.35)'), BX, seamL);
+  wave(shade(rightColor, 0.75).replace('rgb', 'rgba').replace(')', ',0.35)'), seamR, BX + BW);
+
+  // Солдаты по краям: силуэт в цвет стороны, растворяется к центру
   if (b.soldier) {
-    // Вырезаем из шаблона голову и плечи солдата, стирая оранжевый уголок рамки.
-    const sw = 560, sh = 560, dh = BH, dw = (sw / sh) * dh;
-    const crop = createCanvas(sw, sh);
+    const sw = 560, sh = 560, dh = BH + 20, dw = (sw / sh) * dh;
+    const crop = createCanvas(Math.ceil(dw), Math.ceil(dh));
     const cx = crop.getContext('2d');
-    cx.drawImage(b.soldier, 0, 0, sw, sh, 0, 0, sw, sh);
+    cx.drawImage(b.soldier, 0, 0, sw, sh, 0, 0, dw, dh);
     cx.globalCompositeOperation = 'destination-out';
-    cx.fillRect(14, 10, 96, 22);
-    cx.fillRect(14, 10, 22, 74);
-    x.globalAlpha = 0.35;
-    x.drawImage(crop, BX, BY, dw, dh);
+    cx.fillRect(0, 0, (110 / sw) * dw, (32 / sh) * dh);
+    cx.fillRect(0, 0, (36 / sw) * dw, (84 / sh) * dh);
+    // затухание вправо
+    const fade = cx.createLinearGradient(dw * 0.45, 0, dw, 0);
+    fade.addColorStop(0, 'rgba(0,0,0,0)');
+    fade.addColorStop(1, 'rgba(0,0,0,1)');
+    cx.fillStyle = fade;
+    cx.fillRect(0, 0, dw, dh);
+    const tint = (col) => {
+      const t = createCanvas(crop.width, crop.height);
+      const tx = t.getContext('2d');
+      tx.drawImage(crop, 0, 0);
+      tx.globalCompositeOperation = 'source-atop';
+      tx.fillStyle = col;
+      tx.globalAlpha = 0.55;
+      tx.fillRect(0, 0, t.width, t.height);
+      return t;
+    };
+    x.globalAlpha = 0.8;
+    x.drawImage(tint(shade(left.f.color, 0.35)), BX, BY - 10);
     x.save();
-    x.translate(BX + BW, BY);
+    x.translate(BX + BW, BY - 10);
     x.scale(-1, 1);
-    x.drawImage(crop, 0, 0, dw, dh);
+    x.drawImage(tint(shade(rightColor, 0.35)), 0, 0);
     x.restore();
     x.globalAlpha = 1;
   }
-  x.fillStyle = 'rgba(0,0,0,0.28)';
-  x.beginPath();
-  x.moveTo(W / 2 - 160, BY);
-  x.lineTo(W / 2 + 200, BY);
-  x.lineTo(W / 2 + 160, BY + BH);
-  x.lineTo(W / 2 - 200, BY + BH);
-  x.fill();
   x.restore();
-  x.strokeStyle = 'rgba(255,255,255,0.14)';
-  x.lineWidth = 2;
-  rr(BX, BY, BW, BH, 16);
+
+  // Светлые швы между сторонами
+  const seam = (X, col) => {
+    x.save();
+    x.shadowColor = col;
+    x.shadowBlur = 10;
+    x.strokeStyle = col;
+    x.lineWidth = 2;
+    x.beginPath();
+    x.moveTo(X + skew, BY + 2);
+    x.lineTo(X - skew, BY + BH - 2);
+    x.stroke();
+    x.restore();
+  };
+  seam(seamL, 'rgba(150,190,240,0.75)');
+  seam(seamR, 'rgba(240,150,150,0.75)');
+  // Рамка со свечением
+  x.save();
+  x.shadowColor = 'rgba(255,255,255,0.25)';
+  x.shadowBlur = 12;
+  x.strokeStyle = 'rgba(255,255,255,0.45)';
+  x.lineWidth = 1.5;
+  rr(BX, BY, BW, BH, 18);
   x.stroke();
+  x.restore();
 
   const emblem = async (side, cx) => {
     const img = side.key ? await b.emblem(side.key) : null;
     if (img) {
-      const s = Math.min(120 / img.width, 120 / img.height);
+      const s = Math.min(110 / img.width, 110 / img.height);
       x.drawImage(img, cx - (img.width * s) / 2, BY + BH / 2 - (img.height * s) / 2, img.width * s, img.height * s);
     } else {
-      shield(x, cx, BY + BH / 2 - 10, 46, side.f.color);
+      shield(x, cx, BY + BH / 2 - 10, 42, side.f.color);
     }
   };
+  const nameShadow = () => {
+    x.shadowColor = 'rgba(0,0,0,0.6)';
+    x.shadowBlur = 8;
+  };
   if (left.key) {
-    await emblem(left, 270);
-    D(left.f.name, 72, 350, BY + 72, C.white, 'left', 420);
-    T(left.f.subtitle, 28, 353, BY + 126, 'rgba(255,255,255,0.7)');
+    await emblem(left, BX + 150);
+    x.save();
+    nameShadow();
+    D(left.f.name, 64, BX + 236, BY + 80, '#f2f4f6', 'left', 300);
+    x.restore();
+    T(left.f.subtitle, 23, BX + 238, BY + 128, 'rgba(235,240,245,0.85)', 400, 'left', 330);
   }
   if (right) {
-    await emblem(right, W - 270);
-    D(right.f.name, 72, W - 350, BY + 72, C.white, 'right', 420);
-    T(right.f.subtitle, 28, W - 353, BY + 126, 'rgba(255,255,255,0.7)', 400, 'right');
+    await emblem(right, BX + BW - 150);
+    x.save();
+    nameShadow();
+    D(right.f.name, 64, BX + BW - 236, BY + 80, '#f2f4f6', 'right', 300);
+    x.restore();
+    T(right.f.subtitle, 23, BX + BW - 238, BY + 128, 'rgba(245,235,235,0.85)', 400, 'right', 330);
   }
+
   const byPoints = d.score && left.key;
   const sc = (side) => (side ? (byPoints ? d.score[side.key] || 0 : side.kills) : 0);
-  T(byPoints ? 'точки' : 'убийства', 22, W / 2, BY + 28, C.grey, 400, 'center');
-  D(`${sc(left)} : ${sc(right)}`, 84, W / 2, BY + 86, C.white, 'center', 520);
+  const scoreText = `${sc(left)} : ${sc(right)}`;
+  x.save();
+  x.shadowColor = 'rgba(255,255,255,0.45)';
+  x.shadowBlur = 22;
+  D(scoreText, byPoints ? 110 : 84, W / 2, BY + 78, '#f4f5f7', 'center', 440);
+  x.restore();
+  if (!byPoints) T('убийства', 20, W / 2, BY + 18, 'rgba(255,255,255,0.55)', 400, 'center');
 
   const win = d.winners.length ? `ПОБЕДА ${d.winners.map((k) => b.faction(k).name).join(', ')}` : 'БЕЗ ПОБЕДИТЕЛЯ';
-  x.font = '26px "Russo One"';
-  const vw = Math.max(260, x.measureText(win).width + 50);
-  rr(W / 2 - vw / 2, BY + 138, vw, 36, 6);
-  x.fillStyle = d.winners.length ? C.orange : 'rgba(255,255,255,0.12)';
+  x.font = '700 30px Roboto';
+  const vw = Math.max(240, x.measureText(win).width + 56);
+  const vy = BY + 138;
+  rr(W / 2 - vw / 2, vy, vw, 46, 10);
+  x.fillStyle = 'rgba(10,13,17,0.75)';
   x.fill();
-  D(win, 26, W / 2, BY + 157, d.winners.length ? '#151515' : C.white, 'center');
-  laurel(x, W / 2 - vw / 2 - 4, BY + 156, -1, 'rgba(255,255,255,0.6)');
-  laurel(x, W / 2 + vw / 2 + 4, BY + 156, 1, 'rgba(255,255,255,0.6)');
+  x.strokeStyle = 'rgba(255,255,255,0.22)';
+  x.lineWidth = 1.2;
+  x.stroke();
+  T(win, 30, W / 2, vy + 24, '#eef0f2', 700, 'center');
+  laurel(x, W / 2 - vw / 2 - 6, vy + 22, -1, 'rgba(235,238,242,0.85)');
+  laurel(x, W / 2 + vw / 2 + 6, vy + 22, 1, 'rgba(235,238,242,0.85)');
 
   // Ряд 2
   const R2 = 340, R2H = 340;
