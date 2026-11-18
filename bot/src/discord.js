@@ -22,8 +22,12 @@ const COMMANDS = [
     .setName('stats')
     .setDescription('Статистика игрока')
     .addStringOption((o) =>
-      o.setName('ник').setDescription('Ник в игре').setRequired(true).setAutocomplete(true)
+      o.setName('ник').setDescription('Ник в игре. Без ника — твоя статистика, если аккаунт привязан').setAutocomplete(true)
     ),
+  new SlashCommandBuilder()
+    .setName('link')
+    .setDescription('Привязать Discord к игроку: код дадут в игре по команде #link')
+    .addStringOption((o) => o.setName('код').setDescription('Код из игры').setRequired(true).setMinLength(6).setMaxLength(6)),
   new SlashCommandBuilder()
     .setName('top')
     .setDescription('Лучшие игроки по убийствам')
@@ -100,7 +104,7 @@ function startDiscord(stats, cfg) {
     try {
       const rest = new REST().setToken(cfg.token);
       await rest.put(Routes.applicationGuildCommands(c.application.id, cfg.guildId), { body: COMMANDS });
-      console.log('[discord] команды /stats, /top и /report зарегистрированы');
+      console.log('[discord] команды /stats, /top, /link и /report зарегистрированы');
     } catch (e) {
       console.error('[discord] не удалось зарегистрировать команды:', e.message);
     }
@@ -144,17 +148,41 @@ function startDiscord(stats, cfg) {
       if (!it.isChatInputCommand()) return;
 
       if (it.commandName === 'stats') {
-        const nick = it.options.getString('ник', true);
-        const found = stats.findPlayer(nick);
-        if (!found) {
-          await it.reply({
-            content: `Игрок «${nick}» не найден. Он должен хотя бы раз зайти на сервер.`,
-            flags: MessageFlags.Ephemeral,
-          });
-          return;
+        const nick = it.options.getString('ник');
+        let uid = null;
+        if (nick) {
+          const found = stats.findPlayer(nick);
+          if (!found) {
+            await it.reply({
+              content: `Игрок «${nick}» не найден. Он должен хотя бы раз зайти на сервер.`,
+              flags: MessageFlags.Ephemeral,
+            });
+            return;
+          }
+          uid = found.uid;
+        } else {
+          uid = stats.linkedUid(it.user.id);
+          if (!uid) {
+            await it.reply({
+              content: 'Укажи ник или привяжи аккаунт: напиши в игре #link и введи здесь /link код.',
+              flags: MessageFlags.Ephemeral,
+            });
+            return;
+          }
         }
         await it.deferReply();
-        await it.editReply(await playerMessage(stats.playerStats(found.uid)));
+        await it.editReply(await playerMessage(stats.playerStats(uid)));
+        return;
+      }
+
+      if (it.commandName === 'link') {
+        const player = stats.useLinkCode(it.options.getString('код', true), it.user.id);
+        await it.reply({
+          content: player
+            ? `Готово: твой Discord привязан к игроку ${player.name}. Теперь /stats без ника покажет твою статистику.`
+            : 'Код неверный или истёк. Напиши в игре #link, чтобы получить новый.',
+          flags: MessageFlags.Ephemeral,
+        });
         return;
       }
 

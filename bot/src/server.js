@@ -142,17 +142,32 @@ const server = http.createServer(async (req, res) => {
       return send(res, 401, { ok: false, error: 'bad token' });
     }
 
-    if (q.kind === 'player') {
-      let uid = typeof q.uid === 'string' && q.uid ? q.uid : '';
-      if (!uid || !stats.playerStats(uid)) {
-        const found = stats.findPlayer(q.name);
-        uid = found ? found.uid : '';
-      }
-      const s = uid ? stats.playerStats(uid) : null;
-      const text = s ? chatLine(s) : `Игрок «${q.name || '?'}» не найден в статистике.`;
+    const reply = (text) => {
       // Мод выводит ответ в чат как есть, поэтому простой текст, без JSON.
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-      return res.end(text);
+      res.end(text);
+    };
+    const uid = typeof q.uid === 'string' ? q.uid : '';
+    const nick = typeof q.nick === 'string' ? q.nick.trim() : '';
+
+    if (q.kind === 'player') {
+      let target = '';
+      if (nick) {
+        const found = stats.findPlayer(nick);
+        target = found ? found.uid : '';
+      } else if (uid && stats.playerStats(uid)) {
+        target = uid;
+      }
+      const s = target ? stats.playerStats(target) : null;
+      if (s) return reply(chatLine(s));
+      return reply(nick ? `Игрок «${nick}» не найден в статистике.` : 'Твоей статистики пока нет: сыграй хотя бы один бой.');
+    }
+
+    if (q.kind === 'link') {
+      if (!uid) return reply('Не удалось определить твой аккаунт. Перезайди на сервер и повтори #link.');
+      const code = stats.createLinkCode(uid);
+      if (!code) return reply('Не удалось создать код, попробуй ещё раз.');
+      return reply(`Код привязки: ${code}. Введи в Discord: /link ${code} (действует 10 минут).`);
     }
 
     return send(res, 400, { ok: false, error: 'unknown kind' });

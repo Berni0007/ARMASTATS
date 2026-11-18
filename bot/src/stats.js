@@ -67,6 +67,15 @@ function createStats(db) {
        WHERE match_id = ? AND victim_faction <> '' GROUP BY victim_faction`
     ),
     markReported: db.prepare('UPDATE matches SET reported = 1 WHERE match_id = ?'),
+    codeClean: db.prepare('DELETE FROM link_codes WHERE expires_at < ? OR uid = ?'),
+    codeInsert: db.prepare('INSERT INTO link_codes (code, uid, expires_at) VALUES (?, ?, ?)'),
+    codeGet: db.prepare('SELECT uid FROM link_codes WHERE code = ? AND expires_at >= ?'),
+    codeDelete: db.prepare('DELETE FROM link_codes WHERE code = ?'),
+    linkSet: db.prepare(
+      `INSERT INTO links (discord_id, uid, linked_at) VALUES (?, ?, ?)
+       ON CONFLICT(discord_id) DO UPDATE SET uid = excluded.uid, linked_at = excluded.linked_at`
+    ),
+    linkGet: db.prepare('SELECT uid FROM links WHERE discord_id = ?'),
     lastMatch: db.prepare('SELECT match_id FROM matches WHERE ended_at IS NOT NULL ORDER BY ended_at DESC LIMIT 1'),
 
     top: db.prepare(
@@ -180,12 +189,48 @@ function createStats(db) {
     q.markReported.run(matchId);
   }
 
+  // Код привязки: 6 символов без похожих букв и цифр, живёт 10 минут.
+  const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  function createLinkCode(uid) {
+    const now = Math.floor(Date.now() / 1000);
+    q.codeClean.run(now, uid);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      let code = '';
+      for (const b of require('node:crypto').randomBytes(6)) code += CODE_ALPHABET[b % CODE_ALPHABET.length];
+      try {
+        q.codeInsert.run(code, uid, now + 600);
+        return code;
+      } catch {
+        // совпадение кода — пробуем другой
+      }
+    }
+    return null;
+  }
+
+  // Возвращает игрока, к которому привязан аккаунт, или null, если код неверный или истёк.
+  function useLinkCode(code, discordId) {
+    const now = Math.floor(Date.now() / 1000);
+    const row = q.codeGet.get(String(code || '').trim().toUpperCase(), now);
+    if (!row) return null;
+    q.codeDelete.run(String(code).trim().toUpperCase());
+    q.linkSet.run(discordId, row.uid, now);
+    return q.player.get(row.uid);
+  }
+
+  function linkedUid(discordId) {
+    const r = q.linkGet.get(discordId);
+    return r ? r.uid : null;
+  }
+
   function lastMatchId() {
     const r = q.lastMatch.get();
     return r ? r.match_id : null;
   }
 
-  return { playerStats, findPlayer, suggestPlayers, matchReport, top, markReported, lastMatchId };
+  return {
+    playerStats, findPlayer, suggestPlayers, matchReport, top, markReported, lastMatchId,
+    createLinkCode, useLinkCode, linkedUid,
+  };
 }
 
 function escapeLike(s) {

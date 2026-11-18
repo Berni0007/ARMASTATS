@@ -62,6 +62,19 @@ CREATE TABLE IF NOT EXISTS kills (
   distance       REAL
 );
 
+-- Привязка Discord-аккаунта к игроку (#link в игре → /link код в Discord).
+CREATE TABLE IF NOT EXISTS links (
+  discord_id TEXT PRIMARY KEY,
+  uid        TEXT NOT NULL,
+  linked_at  INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS link_codes (
+  code       TEXT PRIMARY KEY,
+  uid        TEXT NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS kills_killer ON kills(killer_uid);
 CREATE INDEX IF NOT EXISTS kills_victim ON kills(victim_uid);
 CREATE INDEX IF NOT EXISTS kills_match  ON kills(match_id);
