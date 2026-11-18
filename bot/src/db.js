@@ -72,6 +72,10 @@ function open(file) {
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL;');
   db.exec(SCHEMA);
+  // Миграция: ID события от мода, чтобы повторная отправка из буфера не задваивала статистику.
+  const cols = db.prepare('PRAGMA table_info(events)').all().map((c) => c.name);
+  if (!cols.includes('event_id')) db.exec('ALTER TABLE events ADD COLUMN event_id TEXT');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS events_event_id ON events(event_id) WHERE event_id IS NOT NULL');
   // Исправление старых записей: убийство союзника (в т.ч. бота) — тимкилл.
   db.exec("UPDATE kills SET team_kill = 1 WHERE team_kill = 0 AND relation LIKE '%FRIENDLY%'");
   return db;

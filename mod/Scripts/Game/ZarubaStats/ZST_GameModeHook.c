@@ -15,6 +15,10 @@ modded class SCR_BaseGameMode
 		string matchId = api.StartMatch();
 		Print("[ZarubaStats] Loaded. Match " + matchId);
 
+		// Досылаем то, что не ушло в прошлый раз (падение сервера, недоступный хост).
+		api.FlushOutbox();
+		api.StartAutoFlush();
+
 		// Подписки. Через инвокеры, а не override, чтобы не зависеть от сигнатур методов гейммода.
 		GetOnPlayerRegistered().Insert(ZST_OnPlayerRegistered);
 		GetOnPlayerDisconnected().Insert(ZST_OnPlayerDisconnected);

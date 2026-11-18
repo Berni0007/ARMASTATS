@@ -106,7 +106,6 @@ const server = http.createServer(async (req, res) => {
 
     delete event.token; // секрет в журнал и базу не пишем
     event.receivedAt = new Date().toISOString();
-    fs.appendFileSync(eventsFile, JSON.stringify(event) + '\n');
 
     let result;
     try {
@@ -116,6 +115,13 @@ const server = http.createServer(async (req, res) => {
       return send(res, 500, { ok: false, error: 'store failed' });
     }
 
+    // Повтор отвечаем 200, чтобы мод удалил событие из буфера.
+    if (result.duplicate) {
+      console.log(`[event] ${event.serverId || '?'} ${event.type} (повтор, пропущен)`);
+      return send(res, 200, { ok: true, duplicate: true });
+    }
+
+    fs.appendFileSync(eventsFile, JSON.stringify(event) + '\n');
     console.log(`[event] ${event.serverId || '?'} ${event.type}`);
     send(res, 200, { ok: true });
 

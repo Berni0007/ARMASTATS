@@ -13,8 +13,9 @@ function num(v, def = 0) {
 function createIngest(db) {
   const q = {
     event: db.prepare(
-      'INSERT INTO events (server_id, match_id, type, ts, payload, received_at) VALUES (?, ?, ?, ?, ?, ?)'
+      'INSERT INTO events (event_id, server_id, match_id, type, ts, payload, received_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ),
+    seen: db.prepare('SELECT 1 FROM events WHERE event_id = ?'),
     matchStart: db.prepare(
       `INSERT INTO matches (match_id, server_id, world, started_at) VALUES (?, ?, ?, ?)
        ON CONFLICT(match_id) DO UPDATE SET world = excluded.world, started_at = excluded.started_at`
@@ -49,7 +50,7 @@ function createIngest(db) {
     if (matchId) q.matchPlayer.run(matchId, uid, name || uid, faction || '');
   }
 
-  // Возвращает { matchEnded: matchId }, когда матч закончился, иначе {}.
+  // Возвращает { duplicate: true } для повтора, { matchEnded: matchId } в конце матча, иначе {}.
   return function ingest(event) {
     const type = event.type;
     const serverId = str(event.serverId);
@@ -57,10 +58,14 @@ function createIngest(db) {
     const ts = num(event.ts, Math.floor(Date.now() / 1000));
     const d = event.data && typeof event.data === 'object' ? event.data : {};
     const result = {};
+    const eventId = str(event.eventId) || null;
+
+    // Повтор из буфера мода: событие уже учтено.
+    if (eventId && q.seen.get(eventId)) return { duplicate: true };
 
     db.exec('BEGIN');
     try {
-      q.event.run(serverId, matchId, type, ts, JSON.stringify(event), new Date().toISOString());
+      q.event.run(eventId, serverId, matchId, type, ts, JSON.stringify(event), new Date().toISOString());
 
       if (matchId && type !== 'match_start') q.matchEnsure.run(matchId, serverId, ts);
 
