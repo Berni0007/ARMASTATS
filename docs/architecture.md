@@ -43,7 +43,7 @@
 - `#stats` — своя статистика, `#stats ник` — чужая.
 - Мод (`ZST_StatsCommand`, наследник `ScrServerCommand`) шлёт `POST {apiUrl}/api/query`
   `{token, serverId, kind: "player", uid?, name?}` и ждёт ответа в состоянии PENDING (до 15 с).
-- Хост отвечает `{ok, text}`: готовая строка для чата.
+- Хост отвечает простым текстом (`text/plain`): готовая строка для чата.
 
 ## Подсчёт
 

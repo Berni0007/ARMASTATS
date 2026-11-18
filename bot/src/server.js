@@ -150,7 +150,9 @@ const server = http.createServer(async (req, res) => {
       }
       const s = uid ? stats.playerStats(uid) : null;
       const text = s ? chatLine(s) : `Игрок «${q.name || '?'}» не найден в статистике.`;
-      return send(res, 200, { ok: true, text });
+      // Мод выводит ответ в чат как есть, поэтому простой текст, без JSON.
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end(text);
     }
 
     return send(res, 400, { ok: false, error: 'unknown kind' });

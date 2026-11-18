@@ -14,11 +14,9 @@ class ZST_QueryCallback : RestCallback
 	//------------------------------------------------------------------------------------------------
 	protected void HandleSuccess(RestCallback cb)
 	{
-		// Хост отвечает JSON: {"ok":true,"text":"..."}
-		string text;
-		JsonLoadContext json = new JsonLoadContext();
-		if (json.ImportFromString(cb.GetData()))
-			json.ReadValue("text", text);
+		// Хост отвечает готовой строкой для чата (text/plain).
+		string text = cb.GetData();
+		text.Trim();
 
 		if (text.IsEmpty())
 			text = "Статистика сейчас недоступна.";
