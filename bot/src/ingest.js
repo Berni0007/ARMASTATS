@@ -15,6 +15,10 @@ function createIngest(db) {
     event: db.prepare(
       'INSERT INTO events (event_id, server_id, match_id, type, ts, payload, received_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ),
+    capture: db.prepare(
+      'INSERT INTO captures (match_id, ts, point, from_faction, to_faction, control) VALUES (?, ?, ?, ?, ?, ?)'
+    ),
+    matchPoints: db.prepare('UPDATE matches SET points_end = ? WHERE match_id = ?'),
     seen: db.prepare('SELECT 1 FROM events WHERE event_id = ?'),
     matchStart: db.prepare(
       `INSERT INTO matches (match_id, server_id, world, started_at) VALUES (?, ?, ?, ?)
@@ -109,10 +113,19 @@ function createIngest(db) {
           break;
         }
 
+        case 'capture':
+          q.capture.run(matchId, ts, str(d.point), str(d.from), str(d.to), d.control ? 1 : 0);
+          break;
+
         case 'match_end': {
           const winners = Array.isArray(d.winners) ? d.winners.filter((w) => typeof w === 'string') : [];
           if (matchId) {
             q.matchEnd.run(ts, num(d.durationSec), num(d.endReason, -1), JSON.stringify(winners), matchId);
+            // Владельцы точек на конец боя: { points: {имя: фракция}, controlPoints: [имена] }
+            if (d.points && typeof d.points === 'object') {
+              const control = Array.isArray(d.controlPoints) ? d.controlPoints.filter((x) => typeof x === 'string') : [];
+              q.matchPoints.run(JSON.stringify({ points: d.points, control }), matchId);
+            }
             result.matchEnded = matchId;
           }
           break;

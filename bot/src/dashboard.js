@@ -354,8 +354,10 @@ async function renderDashboard(d) {
     D(right.f.name, 72, W - 350, BY + 72, C.white, 'right', 420);
     T(right.f.subtitle, 28, W - 353, BY + 126, 'rgba(255,255,255,0.7)', 400, 'right');
   }
-  T('убийства', 22, W / 2, BY + 28, C.grey, 400, 'center');
-  D(`${left.kills} : ${right ? right.kills : 0}`, 84, W / 2, BY + 86, C.white, 'center', 520);
+  const byPoints = d.score && left.key;
+  const sc = (side) => (side ? (byPoints ? d.score[side.key] || 0 : side.kills) : 0);
+  T(byPoints ? 'точки' : 'убийства', 22, W / 2, BY + 28, C.grey, 400, 'center');
+  D(`${sc(left)} : ${sc(right)}`, 84, W / 2, BY + 86, C.white, 'center', 520);
 
   const win = d.winners.length ? `ПОБЕДА ${d.winners.map((k) => b.faction(k).name).join(', ')}` : 'БЕЗ ПОБЕДИТЕЛЯ';
   x.font = '26px "Russo One"';
@@ -377,7 +379,9 @@ async function renderDashboard(d) {
     [ic.skull, 'Убийства', num(t.kills)],
     [ic.cross, 'Смерти', num(t.deaths)],
     [ic.respawn, 'Возрождения', num(t.spawns)],
-    [ic.warn, 'Тимкиллы', num(d.teamKills)],
+    d.captures.length || d.score
+      ? [ic.flag, 'Захваты точек', num(d.captures.length)]
+      : [ic.warn, 'Тимкиллы', num(d.teamKills)],
     [ic.head, 'Хедшоты', num(t.headshots) + hsShare],
     [ic.ruler, 'Дальний выстрел', t.longest ? `${Math.round(t.longest)} м` : '—'],
     [ic.clock, 'Время жизни (сред.)', t.avgLifeSec ? hms(t.avgLifeSec) : '—'],
@@ -501,8 +505,8 @@ async function renderDashboard(d) {
   });
 
   const q2x = 36 + q1w + 20, q2w = W - 36 - q2x;
-  panel(q2x, R3, q2w, R3H, 'Ход боя: убийства по минутам', ic.chart);
-  const gx = q2x + 70, gy = R3 + 90, gw = q2w - 120, gh = R3H - 150;
+  panel(q2x, R3, q2w, R3H, 'Ход боя: убийства и захваты', ic.chart);
+  const gx = q2x + 70, gy = R3 + 122, gw = q2w - 120, gh = R3H - 182;
   const lines = sides.slice(0, 3).filter((s) => d.timeline[s.key]);
   // Сглаживание скользящим средним по 3 минутам
   const smooth = (arr) => arr.map((_, i) => {
@@ -541,6 +545,34 @@ async function renderDashboard(d) {
     x.fill();
     x.globalAlpha = 1;
   });
+  // Захваты точек: флажок цвета взявшей стороны над моментом захвата
+  for (const c of d.captures) {
+    const tSec = c.ts - d.startedAt;
+    if (tSec < 0 || tSec > d.durationSec) continue;
+    const X = gx + (gw * tSec) / Math.max(1, d.durationSec);
+    const col = b.faction(c.to).color;
+    x.strokeStyle = 'rgba(255,255,255,0.18)';
+    x.lineWidth = 1;
+    x.setLineDash([4, 4]);
+    x.beginPath();
+    x.moveTo(X, gy);
+    x.lineTo(X, gy + gh);
+    x.stroke();
+    x.setLineDash([]);
+    x.strokeStyle = col;
+    x.lineWidth = 2;
+    x.beginPath();
+    x.moveTo(X, gy + 2);
+    x.lineTo(X, gy - 22);
+    x.stroke();
+    x.fillStyle = col;
+    x.beginPath();
+    x.moveTo(X, gy - 22);
+    x.lineTo(X + 14, gy - 17);
+    x.lineTo(X, gy - 12);
+    x.fill();
+    T(c.point, 16, X + 4, gy - 32, C.grey, 400, 'center', 90);
+  }
   if (!data.length) T('Убийств не было', 26, gx + gw / 2, gy + gh / 2, C.dim, 400, 'center');
   for (let i = 0; i <= 4; i++) T(hms((d.durationSec * i) / 4), 18, gx + (gw * i) / 4, gy + gh + 22, C.dim, 400, 'center');
   data.forEach(({ s }, i) => {

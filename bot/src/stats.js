@@ -117,6 +117,7 @@ function createStats(db) {
        WHERE match_id = ? AND team_kill = 0 AND killer_faction <> ''
          AND NOT (killer_uid <> '' AND killer_uid = victim_uid)`
     ),
+    dCaptures: db.prepare('SELECT ts, point, from_faction AS "from", to_faction AS "to", control FROM captures WHERE match_id = ? ORDER BY ts'),
     lastMatch: db.prepare('SELECT match_id FROM matches WHERE ended_at IS NOT NULL ORDER BY ended_at DESC LIMIT 1'),
 
     top: db.prepare(
@@ -290,9 +291,27 @@ function createStats(db) {
       (timeline[k.faction] ||= new Array(minutes).fill(0))[i]++;
     }
 
+    // Точки: счёт = сколько точек держит сторона на конец боя (если есть контрольные — только они).
+    const captures = q.dCaptures.all(matchId);
+    let score = null;
+    let pointsTotal = 0;
+    const snap = safeJson(m.points_end, null);
+    if (snap && snap.points && Object.keys(snap.points).length) {
+      const names = snap.control && snap.control.length ? snap.control : Object.keys(snap.points);
+      score = {};
+      for (const n of names) {
+        const owner = snap.points[n];
+        if (owner) score[owner] = (score[owner] || 0) + 1;
+      }
+      pointsTotal = names.length;
+    }
+
     return {
       ...r,
       startedAt: start,
+      captures,
+      score,
+      pointsTotal,
       totals: {
         kills,
         deaths: t.deaths || 0,

@@ -82,6 +82,9 @@ modded class SCR_BaseGameMode
 			json.WriteValue("winners", winners);
 		}
 
+		// Кто какие точки держит на конец боя.
+		SCR_CampaignMilitaryBaseComponent.ZST_WriteSnapshot(json);
+
 		api.Send("match_end", json);
 	}
 

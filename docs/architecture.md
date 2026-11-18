@@ -34,9 +34,18 @@
 | `player_leave` | `playerId`, `uid`, `name` |
 | `player_spawn` | `playerId`, `uid`, `name`, `faction` |
 | `kill` | `relation`, `teamKill`, `victim*` и `killer*` (`Id`, `Uid`, `Name`, `Type`, `Faction`), `weapon`, `weaponSource`, `damageType`, `hitZone`, `distance`, `pos` |
-| `match_end` | `durationSec`, `endReason`, `winners` (ключи фракций) |
+| `capture` | `point`, `from`, `to` (ключи фракций), `control` (контрольная точка) |
+| `match_end` | `durationSec`, `endReason`, `winners`, `points` {имя: владелец}, `controlPoints` [имена] |
 
 `kill` шлётся, если жертва или убийца — игрок. ИИ против ИИ не пишется.
+
+## Точки захвата
+
+- Мод перехватывает смену фракции у баз Conflict (`SCR_CampaignMilitaryBaseComponent.OnFactionChanged`).
+  Начальная раздача баз (первые 10 с матча или без прежнего владельца) захватом не считается.
+- В `match_end` мод присылает владельцев всех точек. Счёт в баннере — число точек у стороны
+  на конец боя; если в сценарии есть контрольные точки, считаются только они.
+- Без точек (сценарий без баз Conflict) в баннере остаётся счёт убийств.
 
 ## Чат-команда #stats
 

@@ -62,6 +62,18 @@ CREATE TABLE IF NOT EXISTS kills (
   distance       REAL
 );
 
+-- Захваты точек (базы Conflict).
+CREATE TABLE IF NOT EXISTS captures (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  match_id     TEXT,
+  ts           INTEGER,
+  point        TEXT,
+  from_faction TEXT,
+  to_faction   TEXT,
+  control      INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS captures_match ON captures(match_id);
+
 -- Привязка Discord-аккаунта к игроку (#link в игре → /link код в Discord).
 CREATE TABLE IF NOT EXISTS links (
   discord_id TEXT PRIMARY KEY,
@@ -88,6 +100,9 @@ function open(file) {
   // Миграция: ID события от мода, чтобы повторная отправка из буфера не задваивала статистику.
   const cols = db.prepare('PRAGMA table_info(events)').all().map((c) => c.name);
   if (!cols.includes('event_id')) db.exec('ALTER TABLE events ADD COLUMN event_id TEXT');
+  // Миграция: владельцы точек на конец матча (мод 0.3+).
+  const mcols = db.prepare('PRAGMA table_info(matches)').all().map((c) => c.name);
+  if (!mcols.includes('points_end')) db.exec("ALTER TABLE matches ADD COLUMN points_end TEXT NOT NULL DEFAULT ''");
   // Миграция: чем и куда убили (мод 0.1.1+).
   const kcols = db.prepare('PRAGMA table_info(kills)').all().map((c) => c.name);
   for (const col of ['weapon_source', 'damage_type', 'hit_zone']) {
