@@ -57,7 +57,106 @@ class ZST_Utils
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Префаб оружия в руках у сущности. Пусто, если оружия нет.
+	//! Игровое название предмета или техники — то же, что видит игрок в инвентаре/редакторе.
+	//! Работает и для модового оружия. Пусто, если у предмета нет названия.
+	static string GetDisplayName(IEntity entity)
+	{
+		if (!entity)
+			return string.Empty;
+
+		string name;
+
+		InventoryItemComponent item = InventoryItemComponent.Cast(entity.FindComponent(InventoryItemComponent));
+		if (item)
+		{
+			ItemAttributeCollection attributes = item.GetAttributes();
+			if (attributes)
+			{
+				UIInfo info = attributes.GetUIInfo();
+				if (info)
+					name = info.GetName();
+			}
+		}
+
+		if (name.IsEmpty())
+		{
+			BaseWeaponComponent weapon = BaseWeaponComponent.Cast(entity.FindComponent(BaseWeaponComponent));
+			if (weapon)
+			{
+				UIInfo info = weapon.GetUIInfo();
+				if (info)
+					name = info.GetName();
+			}
+		}
+
+		if (name.IsEmpty())
+		{
+			SCR_EditableEntityComponent editable = SCR_EditableEntityComponent.Cast(entity.FindComponent(SCR_EditableEntityComponent));
+			if (editable)
+			{
+				SCR_UIInfo info = editable.GetInfo();
+				if (info)
+					name = info.GetName();
+			}
+		}
+
+		if (name.IsEmpty())
+			return string.Empty;
+
+		// Ключ локализации (#AR-...) переводим; если перевода нет — отдаём как есть, хост разберётся.
+		string translated = WidgetManager.Translate(name);
+		if (!translated.IsEmpty())
+			name = translated;
+
+		return name;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Роль игрока = название выбранного набора снаряжения (лоадаута). Пусто, если не определить.
+	static string GetPlayerRole(int playerId)
+	{
+		PlayerController pc = GetGame().GetPlayerManager().GetPlayerController(playerId);
+		if (!pc)
+			return string.Empty;
+
+		SCR_PlayerLoadoutComponent loadoutComp = SCR_PlayerLoadoutComponent.Cast(pc.FindComponent(SCR_PlayerLoadoutComponent));
+		if (!loadoutComp)
+			return string.Empty;
+
+		SCR_BasePlayerLoadout loadout = loadoutComp.GetLoadout();
+		if (!loadout)
+			return string.Empty;
+
+		string name = loadout.GetLoadoutName();
+		if (name.IsEmpty())
+			return string.Empty;
+
+		string translated = WidgetManager.Translate(name);
+		if (!translated.IsEmpty())
+			name = translated;
+
+		return name;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Префаб текущего оружия в руках. Пусто, если оружия нет.
+	static IEntity GetCurrentWeaponEntity(IEntity entity)
+	{
+		if (!entity)
+			return null;
+
+		BaseWeaponManagerComponent wm = BaseWeaponManagerComponent.Cast(entity.FindComponent(BaseWeaponManagerComponent));
+		if (!wm)
+			return null;
+
+		BaseWeaponComponent weapon = wm.GetCurrentWeapon();
+		if (!weapon)
+			return null;
+
+		return weapon.GetOwner();
+	}
+
+	//------------------------------------------------------------------------------------------------
 	static string GetCurrentWeapon(IEntity entity)
 	{
 		if (!entity)
@@ -84,6 +183,28 @@ class ZST_Utils
 
 	//------------------------------------------------------------------------------------------------
 	//! Префаб техники, в которой сидит персонаж. Пусто, если он пеший.
+	static IEntity GetVehicleEntity(IEntity entity)
+	{
+		ChimeraCharacter character = ChimeraCharacter.Cast(entity);
+		if (!character || !character.IsInVehicle())
+			return null;
+
+		CompartmentAccessComponent access = character.GetCompartmentAccessComponent();
+		if (!access)
+			return null;
+
+		BaseCompartmentSlot slot = access.GetCompartment();
+		if (!slot)
+			return null;
+
+		IEntity vehicle = slot.GetOwner();
+		if (vehicle)
+			vehicle = vehicle.GetRootParent();
+
+		return vehicle;
+	}
+
+	//------------------------------------------------------------------------------------------------
 	static string GetVehicle(IEntity entity)
 	{
 		ChimeraCharacter character = ChimeraCharacter.Cast(entity);
@@ -112,14 +233,16 @@ class ZST_Utils
 	//------------------------------------------------------------------------------------------------
 	//! Чем убили. Возвращает префаб и заполняет способ (source):
 	//! hands — оружие в руках, explosive — граната/мина/ракета, vehicle — техника.
-	static string ResolveWeapon(IEntity victim, IEntity killer, out string source, out string damageType, out string hitZone)
+	static string ResolveWeapon(IEntity victim, IEntity killer, out string source, out string damageType, out string hitZone, out string weaponName)
 	{
 		source = string.Empty;
+		weaponName = string.Empty;
 		damageType = string.Empty;
 		hitZone = string.Empty;
 
 		EDamageType type = -1;
 		string damageSource;
+		string damageSourceName;
 
 		SCR_CharacterDamageManagerComponent dm;
 		if (victim)
@@ -129,6 +252,7 @@ class ZST_Utils
 		{
 			type = dm.ZST_GetLastType();
 			damageSource = dm.ZST_GetLastSource();
+			damageSourceName = dm.ZST_GetLastSourceName();
 			hitZone = dm.ZST_GetLastZone();
 			if (type >= 0)
 				damageType = typename.EnumToString(EDamageType, type);
@@ -138,6 +262,7 @@ class ZST_Utils
 		if ((type == EDamageType.EXPLOSIVE || type == EDamageType.FRAGMENTATION || type == EDamageType.INCENDIARY) && !damageSource.IsEmpty())
 		{
 			source = "explosive";
+			weaponName = damageSourceName;
 			return damageSource;
 		}
 
@@ -145,6 +270,7 @@ class ZST_Utils
 		if (type == EDamageType.COLLISION && !damageSource.IsEmpty())
 		{
 			source = "vehicle";
+			weaponName = damageSourceName;
 			return damageSource;
 		}
 
@@ -153,6 +279,7 @@ class ZST_Utils
 		if (!vehicle.IsEmpty())
 		{
 			source = "vehicle";
+			weaponName = GetDisplayName(GetVehicleEntity(killer));
 			return vehicle;
 		}
 
@@ -161,12 +288,14 @@ class ZST_Utils
 		if (!inHands.IsEmpty())
 		{
 			source = "hands";
+			weaponName = GetDisplayName(GetCurrentWeaponEntity(killer));
 			return inHands;
 		}
 
 		if (!damageSource.IsEmpty())
 		{
 			source = "damage";
+			weaponName = damageSourceName;
 			return damageSource;
 		}
 

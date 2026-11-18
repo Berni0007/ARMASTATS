@@ -4,7 +4,7 @@
 
 const path = require('node:path');
 const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
-const { weaponName, worldName, duration } = require('./format');
+const { weaponName, worldName, duration, lifeTime } = require('./format');
 
 const ASSETS = path.join(__dirname, '..', 'assets');
 GlobalFonts.registerFromPath(path.join(ASSETS, 'fonts', 'RussoOne.ttf'), 'Russo One');
@@ -215,9 +215,9 @@ async function renderPlayer(s) {
     [String(s.kills), 'убито'],
     [String(s.deaths), 'погиб'],
     [meters(s.longest), 'дальний выстрел'],
-    [String(s.pvpKills), 'игроков'],
-    [String(s.aiKills), 'ботов'],
-    [s.favWeapon ? weaponName(s.favWeapon) : '—', 'любимое оружие'],
+    [`${s.pvpKills} / ${s.aiKills}`, 'игроков / ботов'],
+    [s.avgLifeSec ? lifeTime(s.avgLifeSec) : '—', 'жизнь в среднем'],
+    [s.favWeapon ? weaponName(s.favWeapon, s.favWeaponName) : '—', 'любимое оружие'],
   ];
   const cw = Math.floor(W / 3);
   cells.forEach(([v, label], i) => {

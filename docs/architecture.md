@@ -35,6 +35,7 @@
 | `player_spawn` | `playerId`, `uid`, `name`, `faction` |
 | `kill` | `relation`, `teamKill`, `victim*` и `killer*` (`Id`, `Uid`, `Name`, `Type`, `Faction`), `weapon`, `weaponSource`, `damageType`, `hitZone`, `distance`, `pos` |
 | `capture` | `point`, `from`, `to` (ключи фракций), `control` (контрольная точка) |
+| `player_stats` | `uid`, `assists`, `hits`, `shots`, `captures`, `revives`, `vehDamage`, `vehKills` — нарастающий итог за матч, при выходе игрока и в конце матча |
 | `match_end` | `durationSec`, `endReason`, `winners`, `points` {имя: владелец}, `controlPoints` [имена] |
 
 `kill` шлётся, если жертва или убийца — игрок. ИИ против ИИ не пишется.
@@ -93,3 +94,9 @@
 3. База SQLite и подсчёт статистики.
 4. Discord: отчёт матча, `/stats`, таблица лидеров.
 5. Команда `!stats` в игровом чате.
+
+## Очки игрока
+
+Считаются на хосте одной формулой для всех: убийство игрока +100, бота +50, помощь +50, захват +200,
+возрождение союзника +100, уничтоженная техника +300, тимкилл −300. Меньше нуля не бывает.
+Помощь — ранил жертву за 30 с до смерти, но убил другой. Захват — был в радиусе точки в момент захвата.

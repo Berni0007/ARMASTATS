@@ -16,6 +16,7 @@ const {
 } = require('discord.js');
 const { matchEmbed, playerEmbed, topEmbed } = require('./format');
 const { renderPlayer, renderTop } = require('./render');
+const { renderPlayerCard } = require('./playercard');
 const { renderDashboard } = require('./dashboard');
 
 const COMMANDS = [
@@ -63,7 +64,9 @@ async function topMessage(rows) {
 
 async function playerMessage(s) {
   try {
-    return { files: [{ attachment: await renderPlayer(s), name: 'player.png' }] };
+    // Карточка по шаблону концепта (branding/player.png), иначе прежняя.
+    const png = (await renderPlayerCard(s)) || (await renderPlayer(s));
+    return { files: [{ attachment: png, name: 'player.png' }] };
   } catch (e) {
     console.error('[render] карточка игрока:', e.message);
     return { embeds: [playerEmbed(s)] };

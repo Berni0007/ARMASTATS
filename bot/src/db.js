@@ -62,6 +62,20 @@ CREATE TABLE IF NOT EXISTS kills (
   distance       REAL
 );
 
+-- Личные счётчики игрока за матч (мод 0.4+): присылаются нарастающим итогом, хранится последний.
+CREATE TABLE IF NOT EXISTS player_match_stats (
+  match_id   TEXT NOT NULL,
+  uid        TEXT NOT NULL,
+  assists    INTEGER NOT NULL DEFAULT 0,
+  hits       INTEGER NOT NULL DEFAULT 0,
+  shots      INTEGER NOT NULL DEFAULT 0,
+  captures   INTEGER NOT NULL DEFAULT 0,
+  revives    INTEGER NOT NULL DEFAULT 0,
+  veh_damage REAL    NOT NULL DEFAULT 0,
+  veh_kills  INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (match_id, uid)
+);
+
 -- Захваты точек (базы Conflict).
 CREATE TABLE IF NOT EXISTS captures (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -105,7 +119,7 @@ function open(file) {
   if (!mcols.includes('points_end')) db.exec("ALTER TABLE matches ADD COLUMN points_end TEXT NOT NULL DEFAULT ''");
   // Миграция: чем и куда убили (мод 0.1.1+).
   const kcols = db.prepare('PRAGMA table_info(kills)').all().map((c) => c.name);
-  for (const col of ['weapon_source', 'damage_type', 'hit_zone']) {
+  for (const col of ['weapon_source', 'damage_type', 'hit_zone', 'weapon_name']) {
     if (!kcols.includes(col)) db.exec(`ALTER TABLE kills ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`);
   }
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS events_event_id ON events(event_id) WHERE event_id IS NOT NULL');

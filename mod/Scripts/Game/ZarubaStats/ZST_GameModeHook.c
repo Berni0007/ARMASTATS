@@ -13,6 +13,7 @@ modded class SCR_BaseGameMode
 		ZST_Api api = ZST_Api.GetInstance();
 		api.ReloadConfig();
 		string matchId = api.StartMatch();
+		ZST_PlayerStats.GetInstance().Reset();
 		Print("[ZarubaStats] Loaded. Match " + matchId);
 
 		// Досылаем то, что не ушло в прошлый раз (падение сервера, недоступный хост).
@@ -45,7 +46,10 @@ modded class SCR_BaseGameMode
 	protected override void OnGameModeEnd(SCR_GameModeEndData endData)
 	{
 		if (IsMaster())
+		{
+			ZST_PlayerStats.GetInstance().SendAll();
 			ZST_SendMatchEnd(endData);
+		}
 
 		super.OnGameModeEnd(endData);
 	}
@@ -109,8 +113,11 @@ modded class SCR_BaseGameMode
 		if (!json)
 			return;
 
+		string uid = ZST_Utils.GetPlayerUid(playerId);
+		ZST_PlayerStats.GetInstance().RememberUid(playerId, uid);
+
 		json.WriteValue("playerId", playerId);
-		json.WriteValue("uid", ZST_Utils.GetPlayerUid(playerId));
+		json.WriteValue("uid", uid);
 		json.WriteValue("name", ZST_Utils.GetPlayerName(playerId));
 		api.Send("player_join", json);
 	}
@@ -118,6 +125,8 @@ modded class SCR_BaseGameMode
 	//------------------------------------------------------------------------------------------------
 	protected void ZST_OnPlayerDisconnected(int playerId, KickCauseCode cause, int timeout)
 	{
+		ZST_PlayerStats.GetInstance().Send(playerId);
+
 		ZST_Api api = ZST_Api.GetInstance();
 		JsonSaveContext json = api.Begin("player_leave");
 		if (!json)
@@ -142,7 +151,10 @@ modded class SCR_BaseGameMode
 		json.WriteValue("uid", ZST_Utils.GetPlayerUid(playerId));
 		json.WriteValue("name", ZST_Utils.GetPlayerName(playerId));
 		json.WriteValue("faction", ZST_Utils.GetPlayerFactionKey(playerId));
+		json.WriteValue("role", ZST_Utils.GetPlayerRole(playerId));
 		api.Send("player_spawn", json);
+
+		ZST_PlayerStats.GetInstance().WatchShots(controlledEntity);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -158,6 +170,14 @@ modded class SCR_BaseGameMode
 
 		IEntity victim = ctx.GetVictimEntity();
 		IEntity killer = ctx.GetKillerEntity();
+
+		// Помощь: все игроки, ранившие жертву за последние 30 с, кроме убийцы.
+		if (victim)
+		{
+			SCR_CharacterDamageManagerComponent dm = SCR_CharacterDamageManagerComponent.Cast(victim.FindComponent(SCR_CharacterDamageManagerComponent));
+			if (dm)
+				dm.ZST_CreditAssists(killerId);
+		}
 
 		ZST_Api api = ZST_Api.GetInstance();
 		JsonSaveContext json = api.Begin("kill");
@@ -179,9 +199,10 @@ modded class SCR_BaseGameMode
 		json.WriteValue("killerType", typename.EnumToString(SCR_ECharacterControlType, ctx.GetKillerCharacterControlType()));
 		json.WriteValue("killerFaction", ZST_Utils.GetEntityFactionKey(killer));
 
-		string weaponSource, damageType, hitZone;
-		string weapon = ZST_Utils.ResolveWeapon(victim, killer, weaponSource, damageType, hitZone);
+		string weaponSource, damageType, hitZone, weaponName;
+		string weapon = ZST_Utils.ResolveWeapon(victim, killer, weaponSource, damageType, hitZone, weaponName);
 		json.WriteValue("weapon", weapon);
+		json.WriteValue("weaponName", weaponName);
 		json.WriteValue("weaponSource", weaponSource);
 		json.WriteValue("damageType", damageType);
 		json.WriteValue("hitZone", hitZone);

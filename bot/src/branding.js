@@ -4,6 +4,9 @@
 //   branding.json         — названия и цвета сторон, названия карт, подпись
 //   background.jpg|png    — фон дашборда (иначе тёмный фон с горизонталями)
 //   logo.png|jpg          — лого в шапке (иначе лого ZARUBA)
+//   header.png            — готовая шапка-шаблон 1683×259 (как концепт), поверх пишутся данные
+//   player.png            — готовая карточка игрока 1672×941 (как концепт), поверх пишутся данные
+//   weapons/<имя>.png     — картинка оружия (имя — игровое название или имя файла префаба); нет файла — только название
 //   emblems/<КЛЮЧ>.png    — значок стороны, ключ как в игре: US, USSR, FIA... (иначе нарисованный щит)
 
 const fs = require('node:fs');
@@ -84,6 +87,19 @@ async function loadBranding() {
     background: await image(firstExisting(['background.jpg', 'background.png'])),
     logo: (await image(firstExisting(['logo.png', 'logo.jpg']))) || (await image(path.join(ASSETS, 'logo.jpg'))),
     soldier: await image(path.join(ASSETS, 'template.png')),
+    // Готовая шапка 1683×259 (концепт) с очищенными местами под данные.
+    // Шаблоны: свой файл в branding/ важнее встроенного в assets/.
+    headerTemplate: await image(firstExisting(['header.png']) || path.join(ASSETS, 'header.png')),
+    // Готовая карточка игрока 1672×941 (концепт) с очищенными местами под данные.
+    playerTemplate: await image(firstExisting(['player.png']) || path.join(ASSETS, 'player.png')),
+    // Картинка оружия: только своя, из weapons/<название или имя префаба>.png.
+    async weapon(prefab, display) {
+      const stem = String(prefab || '').split('/').pop().replace(/\.et$/i, '');
+      const safe = (n) => String(n || '').replace(/[\\/:*?"<>|]/g, '_').trim();
+      const own = firstExisting([`weapons/${safe(display)}.png`, `weapons/${safe(stem)}.png`].filter((n) => !n.endsWith('/.png')));
+      // Только точная картинка этого оружия; общего силуэта нет, чтобы не путать модели.
+      return own ? image(own) : null;
+    },
     emblem: (key) => image(firstExisting([`emblems/${key}.png`, `emblems/${key}.jpg`])),
     order: cfg.order || DEFAULTS.order,
     faction(key) {

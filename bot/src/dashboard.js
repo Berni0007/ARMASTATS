@@ -227,7 +227,15 @@ async function renderDashboard(d) {
   // Фон
   x.fillStyle = C.bg;
   x.fillRect(0, 0, W, H);
-  if (b.background) {
+  if (b.headerTemplate) {
+    // Фон под панелями — та же шапка, сильно размытая и затемнённая.
+    x.save();
+    x.filter = 'blur(40px)';
+    x.drawImage(b.headerTemplate, -80, -80, W + 160, H + 160);
+    x.restore();
+    x.fillStyle = 'rgba(10,12,15,0.62)';
+    x.fillRect(0, 0, W, H);
+  } else if (b.background) {
     const s = Math.max(W / b.background.width, H / b.background.height);
     x.drawImage(b.background, (W - b.background.width * s) / 2, (H - b.background.height * s) / 2, b.background.width * s, b.background.height * s);
     x.fillStyle = 'rgba(12,14,17,0.72)';
@@ -250,6 +258,69 @@ async function renderDashboard(d) {
     topo(x);
   }
 
+  // Стороны нужны и в режиме шаблона (для панели «Стороны»)
+  const sides = Object.entries(d.factions)
+    .map(([key, v]) => ({ key, ...v, f: b.faction(key) }))
+    .sort((p, q) => {
+      const ip = b.order.indexOf(p.key);
+      const iq = b.order.indexOf(q.key);
+      if (ip !== -1 || iq !== -1) return (ip === -1 ? 99 : ip) - (iq === -1 ? 99 : iq);
+      return q.kills + q.deaths - (p.kills + p.deaths);
+    });
+
+  if (b.headerTemplate) {
+    // Шапка из шаблона 1683×259; координаты ниже — в пикселях шаблона.
+    const ts = W / b.headerTemplate.width;
+    const th = b.headerTemplate.height * ts;
+    x.drawImage(b.headerTemplate, 0, 0, W, th);
+    const fade = x.createLinearGradient(0, th - 30, 0, th + 10);
+    fade.addColorStop(0, 'rgba(0,0,0,0)');
+    fade.addColorStop(1, 'rgba(10,12,15,0.0)');
+    x.fillStyle = fade;
+    x.fillRect(0, th - 30, W, 40);
+    const P = (v) => v * ts;
+
+    // Плашка: карта | игроки | длительность
+    const info = [b.world(d.world), `${d.playerCount} ${plural(d.playerCount, 'игрок', 'игрока', 'игроков')}`, `Длительность ${hms(d.durationSec, true)}`];
+    let fs = P(17.5);
+    const room = P(1458 - 950);
+    const gap = P(26);
+    const width = () => {
+      x.font = `400 ${fs}px Roboto`;
+      return info.reduce((a, s2) => a + x.measureText(s2).width, 0) + gap * 2 * (info.length - 1);
+    };
+    while (fs > P(11) && width() > room) fs -= 0.5;
+    let ipx = P(950);
+    info.forEach((s2, i) => {
+      ipx += T(s2, fs, ipx, P(47.5), '#e4e7ea', 400);
+      if (i < info.length - 1) {
+        x.fillStyle = 'rgba(230,233,236,0.55)';
+        x.fillRect(ipx + gap - 1, P(38), 1.6, P(19));
+        ipx += gap * 2;
+      }
+    });
+
+    // Счёт
+    const left = sides[0];
+    const right = sides[1];
+    const byPoints = d.score && left;
+    const sc = (side) => (side ? (byPoints ? d.score[side.key] || 0 : side.kills) : 0);
+    x.save();
+    x.shadowColor = 'rgba(255,255,255,0.55)';
+    x.shadowBlur = 20;
+    D(`${sc(left)} : ${sc(right)}`, P(byPoints ? 86 : 64), P(845), P(157), '#eef1f4', 'center', P(300));
+    x.restore();
+
+    // Итог
+    const win = d.winners.length ? `ПОБЕДА ${d.winners.map((k) => b.faction(k).name).join(', ')}` : 'БЕЗ ПОБЕДИТЕЛЯ';
+    let vf = P(25);
+    x.font = `700 ${vf}px Roboto`;
+    while (vf > P(14) && x.measureText(win).width > P(205)) {
+      vf -= 0.5;
+      x.font = `700 ${vf}px Roboto`;
+    }
+    T(win, vf, P(845), P(217), '#eef0f2', 700, 'center');
+  } else {
   // Шапка: лого | заголовок | плашка с картой, игроками, длительностью
   if (b.logo) {
     const lw = 200, lh = 92;
@@ -296,15 +367,6 @@ async function renderDashboard(d) {
     }
   });
 
-  // Стороны: порядок из настроек (НАТО слева, РФ справа), остальные — по участию в бою
-  const sides = Object.entries(d.factions)
-    .map(([key, v]) => ({ key, ...v, f: b.faction(key) }))
-    .sort((p, q) => {
-      const ip = b.order.indexOf(p.key);
-      const iq = b.order.indexOf(q.key);
-      if (ip !== -1 || iq !== -1) return (ip === -1 ? 99 : ip) - (iq === -1 ? 99 : iq);
-      return q.kills + q.deaths - (p.kills + p.deaths);
-    });
   const neutral = { name: '', subtitle: '', color: '#555a62' };
   const left = sides[0] || { key: '', kills: 0, deaths: 0, f: neutral };
   const right = sides[1] || null;
@@ -474,6 +536,8 @@ async function renderDashboard(d) {
   laurel(x, W / 2 - vw / 2 - 6, vy + 22, -1, 'rgba(235,238,242,0.85)');
   laurel(x, W / 2 + vw / 2 + 6, vy + 22, 1, 'rgba(235,238,242,0.85)');
 
+  }
+
   // Ряд 2
   const R2 = 340, R2H = 340;
   const p1w = 420;
@@ -484,9 +548,6 @@ async function renderDashboard(d) {
     [ic.skull, 'Убийства', num(t.kills)],
     [ic.cross, 'Смерти', num(t.deaths)],
     [ic.respawn, 'Возрождения', num(t.spawns)],
-    d.captures.length || d.score
-      ? [ic.flag, 'Захваты точек', num(d.captures.length)]
-      : [ic.warn, 'Тимкиллы', num(d.teamKills)],
     [ic.head, 'Хедшоты', num(t.headshots) + hsShare],
     [ic.ruler, 'Дальний выстрел', t.longest ? `${Math.round(t.longest)} м` : '—'],
     [ic.clock, 'Время жизни (сред.)', t.avgLifeSec ? hms(t.avgLifeSec) : '—'],
@@ -565,13 +626,13 @@ async function renderDashboard(d) {
     const max = d.weapons[0].share || 1;
     d.weapons.forEach((w, i) => {
       const y = R3 + 100 + i * 48;
-      T(weaponName(w.weapon), 25, 66, y, C.white, 500, 'left', 110);
-      T(`${(w.share * 100).toFixed(1)}%`, 23, 250, y, C.grey, 400, 'right');
+      // Игровые названия (особенно модовые) длинные — под имя отдана широкая колонка.
+      T(weaponName(w.weapon, w.weaponName), 23, 66, y, C.white, 500, 'left', 236);
       x.fillStyle = C.track;
-      x.fillRect(270, y - 6, 190, 12);
+      x.fillRect(314, y - 6, 140, 12);
       x.fillStyle = C.green;
-      x.fillRect(270, y - 6, (190 * w.share) / max, 12);
-      T(String(w.kills), 24, 510, y, C.white, 500, 'right');
+      x.fillRect(314, y - 6, (140 * w.share) / max, 12);
+      T(String(w.kills), 24, 512, y, C.white, 500, 'right');
     });
   } else {
     T('Убийств не было', 26, 66, R3 + 140, C.dim);

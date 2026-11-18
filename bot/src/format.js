@@ -12,8 +12,31 @@ function factionName(key) {
 }
 
 // "{GUID}Prefabs/Weapons/Rifles/AK74M/Rifle_AK74M_b30_....et" -> "AK74M"
-function weaponName(prefab) {
+// Названия оружия из модов (RHS, WCS): путь префаба -> русское название.
+// Собирается tools/weapon_names.py из архивов модов; свои правки — DATA_DIR/branding/weapon_names.json.
+const fs = require('node:fs');
+const path = require('node:path');
+function loadNames() {
+  const read = (f) => {
+    try {
+      return JSON.parse(fs.readFileSync(f, 'utf8'));
+    } catch {
+      return {};
+    }
+  };
+  const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+  return { ...read(path.join(__dirname, '..', 'assets', 'weapon_names.json')), ...read(path.join(dataDir, 'branding', 'weapon_names.json')) };
+}
+const MOD_NAMES = loadNames();
+
+// Если мод прислал игровое название (в т.ч. модового оружия) — берём его.
+// Непереведённый ключ (#AR-...) или пусто — разбираем имя префаба.
+function weaponName(prefab, display) {
+  const nice = String(display || '').trim();
+  if (nice && !nice.startsWith('#')) return nice;
   if (!prefab) return '—';
+  const known = MOD_NAMES[String(prefab).replace(/^\{[0-9A-F]+\}/i, '')];
+  if (known) return known;
   const file = prefab.split('/').pop().replace(/\.et$/i, '');
   const parts = file.split('_');
   const kinds = ['rifle', 'pistol', 'mg', 'launcher', 'smg', 'shotgun', 'sniper', 'grenade', 'handgun', 'weapon',
@@ -26,6 +49,15 @@ function weaponName(prefab) {
 function worldName(world) {
   if (!world) return '?';
   return world.split(/[:/]/).pop().replace(/\.ent$/i, '');
+}
+
+// Время жизни: "4:40", "1:02:15".
+function lifeTime(sec) {
+  const s = Math.max(0, Math.round(sec || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
 
 function duration(sec) {
@@ -98,7 +130,8 @@ function playerEmbed(s) {
       { name: 'Ботов убито', value: `${s.aiKills}`, inline: true },
       { name: 'Тимкиллы', value: `${s.teamKills}`, inline: true },
       { name: 'Дальний килл', value: meters(s.longest), inline: true },
-      { name: 'Любимое оружие', value: weaponName(s.favWeapon), inline: true },
+      { name: 'Любимое оружие', value: weaponName(s.favWeapon, s.favWeaponName), inline: true },
+      { name: 'Жизнь (сред.)', value: s.avgLifeSec ? lifeTime(s.avgLifeSec) : '—', inline: true },
       { name: 'Самоубийства', value: `${s.suicides}`, inline: true },
       { name: 'Хедшоты', value: `${s.headshots}`, inline: true },
     ],
@@ -131,8 +164,11 @@ function chatLine(s) {
   if (s.headshots) parts.push(`хедшотов ${s.headshots}`);
   if (s.longest > 0) parts.push(`дальний ${meters(s.longest)}`);
   if (s.teamKills) parts.push(`тимкиллов ${s.teamKills}`);
+  if (s.avgLifeSec) parts.push(`жизнь в среднем ${lifeTime(s.avgLifeSec)}`);
   parts.push(`боёв ${s.matches}`);
+  const play = Object.entries(s.playByFaction || {}).sort((a, b) => b[1] - a[1]);
+  if (play.length) parts.push(play.map(([k, sec]) => `${factionName(k)} ${Math.floor(sec / 3600)} ч`).join(' / '));
   return parts.join(', ');
 }
 
-module.exports = { matchEmbed, playerEmbed, topEmbed, chatLine, weaponName, worldName, duration };
+module.exports = { lifeTime, matchEmbed, playerEmbed, topEmbed, chatLine, weaponName, worldName, duration };

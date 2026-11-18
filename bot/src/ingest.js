@@ -40,12 +40,20 @@ function createIngest(db) {
          name = excluded.name,
          faction = COALESCE(NULLIF(excluded.faction, ''), match_players.faction)`
     ),
+    playerCounters: db.prepare(
+      `INSERT INTO player_match_stats (match_id, uid, assists, hits, shots, captures, revives, veh_damage, veh_kills)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(match_id, uid) DO UPDATE SET
+         assists = MAX(assists, excluded.assists), hits = MAX(hits, excluded.hits), shots = MAX(shots, excluded.shots),
+         captures = MAX(captures, excluded.captures), revives = MAX(revives, excluded.revives),
+         veh_damage = MAX(veh_damage, excluded.veh_damage), veh_kills = MAX(veh_kills, excluded.veh_kills)`
+    ),
     kill: db.prepare(
       `INSERT INTO kills (match_id, server_id, ts, relation, team_kill,
          killer_uid, killer_name, killer_is_ai, killer_faction,
          victim_uid, victim_name, victim_is_ai, victim_faction, weapon, distance,
-         weapon_source, damage_type, hit_zone)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         weapon_source, damage_type, hit_zone, weapon_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ),
   };
 
@@ -105,13 +113,24 @@ function createIngest(db) {
             killerUid, str(d.killerName), killerIsAi, str(d.killerFaction),
             victimUid, str(d.victimName), victimIsAi, str(d.victimFaction),
             str(d.weapon), num(d.distance, -1),
-            str(d.weaponSource), str(d.damageType), str(d.hitZone)
+            str(d.weaponSource), str(d.damageType), str(d.hitZone), str(d.weaponName)
           );
 
           touchPlayer(matchId, killerUid, str(d.killerName), str(d.killerFaction), ts);
           touchPlayer(matchId, victimUid, str(d.victimName), str(d.victimFaction), ts);
           break;
         }
+
+        // Личные счётчики: мод шлёт нарастающий итог при выходе игрока и в конце матча.
+        case 'player_stats':
+          if (matchId && str(d.uid)) {
+            q.playerCounters.run(
+              matchId, str(d.uid),
+              num(d.assists, 0), num(d.hits, 0), num(d.shots, 0), num(d.captures, 0),
+              num(d.revives, 0), num(d.vehDamage, 0), num(d.vehKills, 0)
+            );
+          }
+          break;
 
         case 'capture':
           q.capture.run(matchId, ts, str(d.point), str(d.from), str(d.to), d.control ? 1 : 0);

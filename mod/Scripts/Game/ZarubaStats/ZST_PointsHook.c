@@ -34,6 +34,38 @@ modded class SCR_CampaignMilitaryBaseComponent
 		json.WriteValue("to", faction.GetFactionKey());
 		json.WriteValue("control", IsControlPoint());
 		api.Send("capture", json);
+
+		ZST_CreditCapture(faction.GetFactionKey());
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Захват засчитывается игрокам взявшей стороны, которые в этот момент в радиусе точки.
+	protected void ZST_CreditCapture(string factionKey)
+	{
+		IEntity owner = GetOwner();
+		if (!owner)
+			return;
+
+		float radius = GetRadius();
+		if (radius <= 0)
+			radius = 100;
+
+		vector center = owner.GetOrigin();
+		array<int> players = {};
+		GetGame().GetPlayerManager().GetPlayers(players);
+		foreach (int playerId : players)
+		{
+			IEntity entity = GetGame().GetPlayerManager().GetPlayerControlledEntity(playerId);
+			if (!entity || ZST_Utils.GetEntityFactionKey(entity) != factionKey)
+				continue;
+
+			if (vector.Distance(entity.GetOrigin(), center) > radius)
+				continue;
+
+			ZST_Counters c = ZST_PlayerStats.GetInstance().Get(playerId);
+			if (c)
+				c.m_iCaptures++;
+		}
 	}
 
 	//------------------------------------------------------------------------------------------------
