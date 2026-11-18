@@ -238,4 +238,54 @@ async function renderPlayer(s) {
   return canvas.encode('png');
 }
 
-module.exports = { renderMatch, renderPlayer };
+// ---------------------------------------------------------------------------------------------
+async function renderTop(rows) {
+  const { canvas, ctx } = await base();
+  const W = R - X;
+
+  put(ctx, 'Таблица лидеров', X, 70, { font: text(30), color: C.grey });
+  title(ctx, 'ЛУЧШИЕ БОЙЦЫ', X, 110, { maxPx: 72, minPx: 40, maxWidth: W });
+
+  if (!rows.length) {
+    put(ctx, 'Пока нет ни одного засчитанного убийства.', X, 230, { font: text(34), color: C.grey });
+    return canvas.encode('png');
+  }
+
+  // Колонки: номер, боец, убил, погиб, K/D, хедшоты
+  const cols = { n: X, name: X + 64, kills: R - 420, deaths: R - 290, kd: R - 150, hs: R };
+  const head = 214;
+  put(ctx, '#', cols.n, head, { font: text(26), color: C.grey });
+  put(ctx, 'Боец', cols.name, head, { font: text(26), color: C.grey });
+  put(ctx, 'Убил', cols.kills, head, { font: text(26), color: C.grey, align: 'right' });
+  put(ctx, 'Погиб', cols.deaths, head, { font: text(26), color: C.grey, align: 'right' });
+  put(ctx, 'K/D', cols.kd, head, { font: text(26), color: C.grey, align: 'right' });
+  put(ctx, 'Хедшоты', cols.hs, head, { font: text(26), color: C.grey, align: 'right' });
+
+  // До 10 строк; первое место крупнее и оранжевое
+  const list = rows.slice(0, 10);
+  let y = head + 46;
+  list.forEach((r, i) => {
+    const first = i === 0;
+    const size = first ? 44 : 34;
+    const step = first ? 64 : 52;
+    const color = first ? C.orange : C.white;
+    const font = text(size, 600);
+
+    ctx.fillStyle = C.line;
+    ctx.fillRect(X, y - 8, W, 1);
+
+    put(ctx, String(i + 1), cols.n, y, { font, color });
+    put(ctx, r.name, cols.name, y, { font, color, maxWidth: cols.kills - cols.name - 110 });
+    put(ctx, String(r.kills), cols.kills, y, { font, color, align: 'right' });
+    put(ctx, String(r.deaths), cols.deaths, y, { font, color, align: 'right' });
+    put(ctx, r.kd.toFixed(2), cols.kd, y, { font, color, align: 'right' });
+    const hs = r.kills ? `${Math.round((100 * (r.headshots || 0)) / r.kills)}%` : '—';
+    put(ctx, hs, cols.hs, y, { font, color: first ? C.orange : C.grey, align: 'right' });
+    y += step;
+  });
+
+  put(ctx, `обновлено ${dateTime(Math.floor(Date.now() / 1000))}`, R, 884, { font: text(24), color: C.grey, align: 'right' });
+  return canvas.encode('png');
+}
+
+module.exports = { renderMatch, renderPlayer, renderTop };

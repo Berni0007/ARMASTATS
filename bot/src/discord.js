@@ -15,7 +15,7 @@ const {
   MessageFlags,
 } = require('discord.js');
 const { matchEmbed, playerEmbed, topEmbed } = require('./format');
-const { renderMatch, renderPlayer } = require('./render');
+const { renderMatch, renderPlayer, renderTop } = require('./render');
 
 const COMMANDS = [
   new SlashCommandBuilder()
@@ -32,7 +32,7 @@ const COMMANDS = [
     .setName('top')
     .setDescription('Лучшие игроки по убийствам')
     .addIntegerOption((o) =>
-      o.setName('сколько').setDescription('Сколько игроков показать (до 25)').setMinValue(3).setMaxValue(25)
+      o.setName('сколько').setDescription('Сколько игроков показать (до 10)').setMinValue(3).setMaxValue(10)
     ),
   new SlashCommandBuilder()
     .setName('report')
@@ -46,6 +46,15 @@ async function matchMessage(r) {
   } catch (e) {
     console.error('[render] отчёт матча:', e.message);
     return { embeds: [matchEmbed(r)] };
+  }
+}
+
+async function topMessage(rows) {
+  try {
+    return { files: [{ attachment: await renderTop(rows), name: 'top.png' }] };
+  } catch (e) {
+    console.error('[render] таблица лидеров:', e.message);
+    return { embeds: [topEmbed(rows)] };
   }
 }
 
@@ -188,7 +197,8 @@ function startDiscord(stats, cfg) {
 
       if (it.commandName === 'top') {
         const n = it.options.getInteger('сколько') || 10;
-        await it.reply({ embeds: [topEmbed(stats.top(n))] });
+        await it.deferReply();
+        await it.editReply(await topMessage(stats.top(n)));
         return;
       }
 

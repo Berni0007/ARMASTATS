@@ -82,6 +82,8 @@ function createStats(db) {
       `SELECT k.killer_uid AS uid, p.name AS name,
               COUNT(*) AS kills,
               SUM(CASE WHEN k.victim_is_ai = 0 THEN 1 ELSE 0 END) AS pvp,
+              SUM(CASE WHEN k.hit_zone LIKE 'Head%' THEN 1 ELSE 0 END) AS headshots,
+              MAX(k.distance) AS longest,
               (SELECT COUNT(*) FROM kills d WHERE d.victim_uid = k.killer_uid) AS deaths
        FROM (SELECT * FROM kills WHERE ${VALID_KILL}) k
        JOIN players p ON p.uid = k.killer_uid
