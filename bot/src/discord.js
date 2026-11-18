@@ -1,6 +1,7 @@
 'use strict';
 
-// Discord-бот: отчёт матча в канал и слэш-команды /stats и /top.
+// Discord-бот: отчёт матча в канал, /stats, /top, /report.
+// Отчёт и карточка игрока идут картинкой; если нарисовать не удалось — обычным embed.
 // Если DISCORD_TOKEN не задан, бот не запускается, а сервис просто копит статистику.
 
 const {
@@ -10,8 +11,11 @@ const {
   REST,
   Routes,
   SlashCommandBuilder,
+  PermissionFlagsBits,
+  MessageFlags,
 } = require('discord.js');
 const { matchEmbed, playerEmbed, topEmbed } = require('./format');
+const { renderMatch, renderPlayer } = require('./render');
 
 const COMMANDS = [
   new SlashCommandBuilder()
@@ -26,12 +30,34 @@ const COMMANDS = [
     .addIntegerOption((o) =>
       o.setName('сколько').setDescription('Сколько игроков показать (до 25)').setMinValue(3).setMaxValue(25)
     ),
+  new SlashCommandBuilder()
+    .setName('report')
+    .setDescription('Переслать отчёт о последнем матче в канал отчётов')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 ].map((c) => c.toJSON());
+
+async function matchMessage(r) {
+  try {
+    return { files: [{ attachment: await renderMatch(r), name: 'match.png' }] };
+  } catch (e) {
+    console.error('[render] отчёт матча:', e.message);
+    return { embeds: [matchEmbed(r)] };
+  }
+}
+
+async function playerMessage(s) {
+  try {
+    return { files: [{ attachment: await renderPlayer(s), name: 'player.png' }] };
+  } catch (e) {
+    console.error('[render] карточка игрока:', e.message);
+    return { embeds: [playerEmbed(s)] };
+  }
+}
 
 function startDiscord(stats, cfg) {
   if (!cfg.token) {
     console.log('[discord] DISCORD_TOKEN не задан, бот выключен');
-    return { reportMatch: () => {} };
+    return { reportMatch: async () => {} };
   }
 
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -45,17 +71,43 @@ function startDiscord(stats, cfg) {
     try {
       const rest = new REST().setToken(cfg.token);
       await rest.put(Routes.applicationGuildCommands(c.application.id, cfg.guildId), { body: COMMANDS });
-      console.log('[discord] команды /stats и /top зарегистрированы');
+      console.log('[discord] команды /stats, /top и /report зарегистрированы');
     } catch (e) {
       console.error('[discord] не удалось зарегистрировать команды:', e.message);
     }
   });
 
+  async function sendToChannel(payload) {
+    if (!cfg.channelId) throw new Error('DISCORD_CHANNEL_ID не задан');
+    const channel = await client.channels.fetch(cfg.channelId);
+    await channel.send(payload);
+  }
+
+  // force: отправить, даже если матч короче порога (для /report).
+  async function reportMatch(matchId, { force = false } = {}) {
+    const r = stats.matchReport(matchId);
+    if (!r) return { ok: false, reason: 'матч не найден' };
+
+    if (!force && (r.durationSec < cfg.minMatchSec || r.playerCount < cfg.minPlayers)) {
+      console.log(`[discord] отчёт ${matchId} пропущен: ${Math.round(r.durationSec)} с, игроков ${r.playerCount}`);
+      return { ok: false, reason: 'матч короче порога' };
+    }
+
+    try {
+      await sendToChannel(await matchMessage(r));
+      stats.markReported(matchId);
+      console.log(`[discord] отчёт ${matchId} отправлен`);
+      return { ok: true };
+    } catch (e) {
+      console.error(`[discord] отчёт ${matchId} не отправлен:`, e.message);
+      return { ok: false, reason: e.message };
+    }
+  }
+
   client.on(Events.InteractionCreate, async (it) => {
     try {
       if (it.isAutocomplete()) {
-        const typed = it.options.getFocused();
-        const list = stats.suggestPlayers(typed, 25);
+        const list = stats.suggestPlayers(it.options.getFocused(), 25);
         await it.respond(list.map((p) => ({ name: p.name.slice(0, 100), value: p.name.slice(0, 100) })));
         return;
       }
@@ -66,49 +118,42 @@ function startDiscord(stats, cfg) {
         const nick = it.options.getString('ник', true);
         const found = stats.findPlayer(nick);
         if (!found) {
-          await it.reply({ content: `Игрок «${nick}» не найден. Он должен хотя бы раз зайти на сервер.`, ephemeral: true });
+          await it.reply({
+            content: `Игрок «${nick}» не найден. Он должен хотя бы раз зайти на сервер.`,
+            flags: MessageFlags.Ephemeral,
+          });
           return;
         }
-        await it.reply({ embeds: [playerEmbed(stats.playerStats(found.uid))] });
+        await it.deferReply();
+        await it.editReply(await playerMessage(stats.playerStats(found.uid)));
         return;
       }
 
       if (it.commandName === 'top') {
         const n = it.options.getInteger('сколько') || 10;
         await it.reply({ embeds: [topEmbed(stats.top(n))] });
+        return;
+      }
+
+      if (it.commandName === 'report') {
+        await it.deferReply({ flags: MessageFlags.Ephemeral });
+        const matchId = stats.lastMatchId();
+        if (!matchId) {
+          await it.editReply('Ни один матч ещё не закончился.');
+          return;
+        }
+        const res = await reportMatch(matchId, { force: true });
+        await it.editReply(res.ok ? `Отчёт о матче ${matchId} отправлен в канал.` : `Не отправлен: ${res.reason}`);
       }
     } catch (e) {
       console.error('[discord] ошибка команды:', e);
-      if (it.isRepliable() && !it.replied) {
-        await it.reply({ content: 'Что-то пошло не так, попробуй ещё раз.', ephemeral: true }).catch(() => {});
-      }
+      const msg = { content: 'Что-то пошло не так, попробуй ещё раз.', flags: MessageFlags.Ephemeral };
+      if (it.deferred) await it.editReply(msg.content).catch(() => {});
+      else if (it.isRepliable() && !it.replied) await it.reply(msg).catch(() => {});
     }
   });
 
   client.login(cfg.token).catch((e) => console.error('[discord] вход не удался:', e.message));
-
-  async function reportMatch(matchId) {
-    const r = stats.matchReport(matchId);
-    if (!r) return;
-
-    if (r.durationSec < cfg.minMatchSec || r.playerCount < cfg.minPlayers) {
-      console.log(`[discord] отчёт ${matchId} пропущен: ${Math.round(r.durationSec)} с, игроков ${r.playerCount}`);
-      return;
-    }
-    if (!cfg.channelId) {
-      console.warn('[discord] DISCORD_CHANNEL_ID не задан, отчёт не отправлен');
-      return;
-    }
-
-    try {
-      const channel = await client.channels.fetch(cfg.channelId);
-      await channel.send({ embeds: [matchEmbed(r)] });
-      stats.markReported(matchId);
-      console.log(`[discord] отчёт ${matchId} отправлен`);
-    } catch (e) {
-      console.error(`[discord] отчёт ${matchId} не отправлен:`, e.message);
-    }
-  }
 
   return { reportMatch };
 }

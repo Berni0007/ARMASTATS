@@ -66,6 +66,7 @@ function createStats(db) {
        WHERE match_id = ? AND victim_faction <> '' GROUP BY victim_faction`
     ),
     markReported: db.prepare('UPDATE matches SET reported = 1 WHERE match_id = ?'),
+    lastMatch: db.prepare('SELECT match_id FROM matches WHERE ended_at IS NOT NULL ORDER BY ended_at DESC LIMIT 1'),
 
     top: db.prepare(
       `SELECT k.killer_uid AS uid, p.name AS name,
@@ -103,6 +104,7 @@ function createStats(db) {
       kd: deaths > 0 ? (pvp + ai) / deaths : pvp + ai,
       longest: k.longest != null && k.longest > 0 ? k.longest : 0,
       favWeapon: (q.favWeapon.get(uid) || {}).weapon || '',
+      firstSeen: p.first_seen,
       lastSeen: p.last_seen,
     };
   }
@@ -176,7 +178,12 @@ function createStats(db) {
     q.markReported.run(matchId);
   }
 
-  return { playerStats, findPlayer, suggestPlayers, matchReport, top, markReported };
+  function lastMatchId() {
+    const r = q.lastMatch.get();
+    return r ? r.match_id : null;
+  }
+
+  return { playerStats, findPlayer, suggestPlayers, matchReport, top, markReported, lastMatchId };
 }
 
 function escapeLike(s) {
