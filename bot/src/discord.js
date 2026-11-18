@@ -62,8 +62,37 @@ function startDiscord(stats, cfg) {
 
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
+  // Проверка канала отчётов: видит ли его бот и каких прав не хватает.
+  async function checkChannel(c) {
+    if (!cfg.channelId) {
+      console.warn('[discord] DISCORD_CHANNEL_ID не задан');
+      return;
+    }
+    let channel;
+    try {
+      channel = await c.channels.fetch(cfg.channelId);
+    } catch (e) {
+      const guilds = c.guilds.cache.map((g) => `${g.name} (${g.id})`).join(', ') || 'нет';
+      console.error(`[discord] канал ${cfg.channelId} недоступен: ${e.message}. Бот состоит на серверах: ${guilds}`);
+      return;
+    }
+    const need = [
+      PermissionFlagsBits.ViewChannel,
+      PermissionFlagsBits.SendMessages,
+      PermissionFlagsBits.EmbedLinks,
+      PermissionFlagsBits.AttachFiles,
+    ];
+    const names = { ViewChannel: 'просматривать канал', SendMessages: 'отправлять сообщения', EmbedLinks: 'встраивать ссылки', AttachFiles: 'прикреплять файлы' };
+    const perms = channel.guild ? channel.permissionsFor(channel.guild.members.me) : null;
+    const missing = perms ? perms.missing(need).map((p) => names[p] || p) : [];
+    const where = channel.guild ? `#${channel.name} на сервере ${channel.guild.name}` : channel.id;
+    if (missing.length) console.error(`[discord] канал ${where}: не хватает прав: ${missing.join(', ')}`);
+    else console.log(`[discord] канал отчётов ${where}: права в порядке`);
+  }
+
   client.once(Events.ClientReady, async (c) => {
     console.log(`[discord] вошёл как ${c.user.tag}`);
+    await checkChannel(c);
     if (!cfg.guildId) {
       console.warn('[discord] DISCORD_GUILD_ID не задан, команды не зарегистрированы');
       return;
