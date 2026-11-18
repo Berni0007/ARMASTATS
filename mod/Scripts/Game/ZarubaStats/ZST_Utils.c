@@ -94,7 +94,15 @@ class ZST_Utils
 		if (!access)
 			return string.Empty;
 
-		IEntity vehicle = access.GetVehicle();
+		// Место в технике → его владелец → корневая сущность (сама машина, а не башня или турель).
+		BaseCompartmentSlot slot = access.GetCompartment();
+		if (!slot)
+			return string.Empty;
+
+		IEntity vehicle = slot.GetOwner();
+		if (vehicle)
+			vehicle = vehicle.GetRootParent();
+
 		if (!vehicle || !vehicle.GetPrefabData())
 			return string.Empty;
 
