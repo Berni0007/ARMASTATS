@@ -85,8 +85,13 @@ function createIngest(db) {
           const killerUid = killerIsAi ? '' : str(d.killerUid);
           const victimUid = victimIsAi ? '' : str(d.victimUid);
 
+          // Движок ставит teamKill только за убийство союзника-игрока.
+          // Убийство союзного бота приходит как KILLED_BY_FRIENDLY_PLAYER без флага — это тоже тимкилл.
+          const relation = str(d.relation);
+          const teamKill = d.teamKill || relation.includes('FRIENDLY') ? 1 : 0;
+
           q.kill.run(
-            matchId, serverId, ts, str(d.relation), d.teamKill ? 1 : 0,
+            matchId, serverId, ts, relation, teamKill,
             killerUid, str(d.killerName), killerIsAi, str(d.killerFaction),
             victimUid, str(d.victimName), victimIsAi, str(d.victimFaction),
             str(d.weapon), num(d.distance, -1)

@@ -130,31 +130,36 @@ async function renderMatch(r) {
   ctx.fillRect(X, 250, vw, 52);
   put(ctx, verdict, X + 16, 256, { font: display(36), color: r.winners.length ? C.dark : C.white });
 
-  // Стороны: две с наибольшим числом убийств
+  // Стороны: до трёх, по числу участия (убийства + потери)
   const sides = Object.entries(r.factions)
     .map(([key, v]) => ({ key, ...v }))
-    .sort((a, b) => b.kills - a.kills)
-    .slice(0, 2);
+    .sort((a, b) => b.kills + b.deaths - (a.kills + a.deaths))
+    .slice(0, 3);
 
   let y = 340;
   if (sides.length) {
+    const colW = sides.length === 3 ? Math.floor(W / 3) : 470;
     sides.forEach((s, i) => {
       const f = faction(s.key);
-      const sx = X + i * 470;
-      put(ctx, f.name, sx, y, { font: display(34), color: f.color });
+      const sx = X + i * colW;
+      put(ctx, f.name, sx, y, { font: display(34), color: f.color, maxWidth: colW - 30 });
       put(ctx, String(s.kills), sx, y + 36, { font: text(96, 600) });
       put(ctx, `убийств    потери ${s.deaths}`, sx, y + 160, { font: text(28), color: C.grey });
     });
 
-    const total = sides.reduce((a, s) => a + s.kills, 0);
+    // Полоса: доли убийств сторон
     const by = y + 206;
-    if (sides.length === 2 && total > 0) {
-      ctx.fillStyle = faction(sides[1].key).color;
-      ctx.fillRect(X, by, W, 10);
-      ctx.fillStyle = faction(sides[0].key).color;
-      ctx.fillRect(X, by, Math.round((W * sides[0].kills) / total), 10);
+    const total = sides.reduce((a, s) => a + s.kills, 0);
+    if (total > 0) {
+      let bx = X;
+      sides.forEach((s, i) => {
+        const w = i === sides.length - 1 ? X + W - bx : Math.round((W * s.kills) / total);
+        ctx.fillStyle = faction(s.key).color;
+        ctx.fillRect(bx, by, w, 10);
+        bx += w;
+      });
     } else {
-      ctx.fillStyle = faction(sides[0].key).color;
+      ctx.fillStyle = C.line;
       ctx.fillRect(X, by, W, 10);
     }
     y = by + 40;

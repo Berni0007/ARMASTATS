@@ -72,6 +72,8 @@ function open(file) {
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL;');
   db.exec(SCHEMA);
+  // Исправление старых записей: убийство союзника (в т.ч. бота) — тимкилл.
+  db.exec("UPDATE kills SET team_kill = 1 WHERE team_kill = 0 AND relation LIKE '%FRIENDLY%'");
   return db;
 }
 
