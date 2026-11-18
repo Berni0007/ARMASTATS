@@ -121,4 +121,18 @@ function topEmbed(rows) {
   };
 }
 
-module.exports = { matchEmbed, playerEmbed, topEmbed, weaponName, worldName, duration };
+// Короткий ответ для игрового чата (#stats). Одна строка.
+function chatLine(s) {
+  const parts = [
+    `${s.name}: убийств ${s.kills} (игроков ${s.pvpKills}, ботов ${s.aiKills})`,
+    `смертей ${s.deaths}`,
+    `K/D ${fixed(s.kd)}`,
+  ];
+  if (s.headshots) parts.push(`хедшотов ${s.headshots}`);
+  if (s.longest > 0) parts.push(`дальний ${meters(s.longest)}`);
+  if (s.teamKills) parts.push(`тимкиллов ${s.teamKills}`);
+  parts.push(`боёв ${s.matches}`);
+  return parts.join(', ');
+}
+
+module.exports = { matchEmbed, playerEmbed, topEmbed, chatLine, weaponName, worldName, duration };

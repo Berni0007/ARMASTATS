@@ -11,6 +11,7 @@ const { open } = require('./db');
 const { createIngest } = require('./ingest');
 const { createStats } = require('./stats');
 const { startDiscord } = require('./discord');
+const { chatLine } = require('./format');
 
 const PORT = Number(process.env.PORT || 8787);
 const TOKEN = process.env.STATS_TOKEN || '';
@@ -127,6 +128,32 @@ const server = http.createServer(async (req, res) => {
 
     if (result.matchEnded) discord.reportMatch(result.matchEnded);
     return;
+  }
+
+  // Запрос из игры: #stats [ник]. Ответ — готовая строка для чата.
+  if (req.method === 'POST' && url === '/api/query') {
+    let q;
+    try {
+      q = JSON.parse(await readBody(req));
+    } catch (e) {
+      return send(res, e.code === 413 ? 413 : 400, { ok: false, error: 'bad body' });
+    }
+    if (!q || typeof q !== 'object' || !tokenOk(q.token)) {
+      return send(res, 401, { ok: false, error: 'bad token' });
+    }
+
+    if (q.kind === 'player') {
+      let uid = typeof q.uid === 'string' && q.uid ? q.uid : '';
+      if (!uid || !stats.playerStats(uid)) {
+        const found = stats.findPlayer(q.name);
+        uid = found ? found.uid : '';
+      }
+      const s = uid ? stats.playerStats(uid) : null;
+      const text = s ? chatLine(s) : `Игрок «${q.name || '?'}» не найден в статистике.`;
+      return send(res, 200, { ok: true, text });
+    }
+
+    return send(res, 400, { ok: false, error: 'unknown kind' });
   }
 
   send(res, 404, { ok: false, error: 'not found' });
