@@ -75,6 +75,11 @@ function open(file) {
   // Миграция: ID события от мода, чтобы повторная отправка из буфера не задваивала статистику.
   const cols = db.prepare('PRAGMA table_info(events)').all().map((c) => c.name);
   if (!cols.includes('event_id')) db.exec('ALTER TABLE events ADD COLUMN event_id TEXT');
+  // Миграция: чем и куда убили (мод 0.1.1+).
+  const kcols = db.prepare('PRAGMA table_info(kills)').all().map((c) => c.name);
+  for (const col of ['weapon_source', 'damage_type', 'hit_zone']) {
+    if (!kcols.includes(col)) db.exec(`ALTER TABLE kills ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`);
+  }
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS events_event_id ON events(event_id) WHERE event_id IS NOT NULL');
   // Исправление старых записей: убийство союзника (в т.ч. бота) — тимкилл.
   db.exec("UPDATE kills SET team_kill = 1 WHERE team_kill = 0 AND relation LIKE '%FRIENDLY%'");

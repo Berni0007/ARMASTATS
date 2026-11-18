@@ -39,8 +39,9 @@ function createIngest(db) {
     kill: db.prepare(
       `INSERT INTO kills (match_id, server_id, ts, relation, team_kill,
          killer_uid, killer_name, killer_is_ai, killer_faction,
-         victim_uid, victim_name, victim_is_ai, victim_faction, weapon, distance)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         victim_uid, victim_name, victim_is_ai, victim_faction, weapon, distance,
+         weapon_source, damage_type, hit_zone)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ),
   };
 
@@ -99,7 +100,8 @@ function createIngest(db) {
             matchId, serverId, ts, relation, teamKill,
             killerUid, str(d.killerName), killerIsAi, str(d.killerFaction),
             victimUid, str(d.victimName), victimIsAi, str(d.victimFaction),
-            str(d.weapon), num(d.distance, -1)
+            str(d.weapon), num(d.distance, -1),
+            str(d.weaponSource), str(d.damageType), str(d.hitZone)
           );
 
           touchPlayer(matchId, killerUid, str(d.killerName), str(d.killerFaction), ts);

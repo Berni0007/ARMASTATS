@@ -19,7 +19,8 @@ function createStats(db) {
       `SELECT
          SUM(CASE WHEN victim_is_ai = 0 THEN 1 ELSE 0 END) AS pvp,
          SUM(CASE WHEN victim_is_ai = 1 THEN 1 ELSE 0 END) AS ai,
-         MAX(distance) AS longest
+         MAX(distance) AS longest,
+         SUM(CASE WHEN hit_zone LIKE 'Head%' THEN 1 ELSE 0 END) AS headshots
        FROM kills WHERE killer_uid = ? AND ${VALID_KILL}`
     ),
     teamKills: db.prepare(
@@ -103,6 +104,7 @@ function createStats(db) {
       teamKills: q.teamKills.get(uid).n,
       kd: deaths > 0 ? (pvp + ai) / deaths : pvp + ai,
       longest: k.longest != null && k.longest > 0 ? k.longest : 0,
+      headshots: k.headshots || 0,
       favWeapon: (q.favWeapon.get(uid) || {}).weapon || '',
       firstSeen: p.first_seen,
       lastSeen: p.last_seen,

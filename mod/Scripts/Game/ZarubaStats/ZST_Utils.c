@@ -83,6 +83,89 @@ class ZST_Utils
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! Префаб техники, в которой сидит персонаж. Пусто, если он пеший.
+	static string GetVehicle(IEntity entity)
+	{
+		ChimeraCharacter character = ChimeraCharacter.Cast(entity);
+		if (!character || !character.IsInVehicle())
+			return string.Empty;
+
+		CompartmentAccessComponent access = character.GetCompartmentAccessComponent();
+		if (!access)
+			return string.Empty;
+
+		IEntity vehicle = access.GetVehicle();
+		if (!vehicle || !vehicle.GetPrefabData())
+			return string.Empty;
+
+		return vehicle.GetPrefabData().GetPrefabName();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Чем убили. Возвращает префаб и заполняет способ (source):
+	//! hands — оружие в руках, explosive — граната/мина/ракета, vehicle — техника.
+	static string ResolveWeapon(IEntity victim, IEntity killer, out string source, out string damageType, out string hitZone)
+	{
+		source = string.Empty;
+		damageType = string.Empty;
+		hitZone = string.Empty;
+
+		EDamageType type = -1;
+		string damageSource;
+
+		SCR_CharacterDamageManagerComponent dm;
+		if (victim)
+			dm = SCR_CharacterDamageManagerComponent.Cast(victim.FindComponent(SCR_CharacterDamageManagerComponent));
+
+		if (dm)
+		{
+			type = dm.ZST_GetLastType();
+			damageSource = dm.ZST_GetLastSource();
+			hitZone = dm.ZST_GetLastZone();
+			if (type >= 0)
+				damageType = typename.EnumToString(EDamageType, type);
+		}
+
+		// Взрыв и осколки: источник урона — сам боеприпас.
+		if ((type == EDamageType.EXPLOSIVE || type == EDamageType.FRAGMENTATION || type == EDamageType.INCENDIARY) && !damageSource.IsEmpty())
+		{
+			source = "explosive";
+			return damageSource;
+		}
+
+		// Наезд: источник урона — машина.
+		if (type == EDamageType.COLLISION && !damageSource.IsEmpty())
+		{
+			source = "vehicle";
+			return damageSource;
+		}
+
+		// Стрелок в технике: убила техника (турель, пулемёт на крыше).
+		string vehicle = GetVehicle(killer);
+		if (!vehicle.IsEmpty())
+		{
+			source = "vehicle";
+			return vehicle;
+		}
+
+		// Пуля: снаряд в источнике бесполезен, берём оружие из рук.
+		string inHands = GetCurrentWeapon(killer);
+		if (!inHands.IsEmpty())
+		{
+			source = "hands";
+			return inHands;
+		}
+
+		if (!damageSource.IsEmpty())
+		{
+			source = "damage";
+			return damageSource;
+		}
+
+		return string.Empty;
+	}
+
+	//------------------------------------------------------------------------------------------------
 	//! Дистанция между сущностями в метрах. -1, если какой-то нет.
 	static float GetDistance(IEntity a, IEntity b)
 	{

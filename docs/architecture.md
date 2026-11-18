@@ -33,7 +33,7 @@
 | `player_join` | `playerId`, `uid`, `name` |
 | `player_leave` | `playerId`, `uid`, `name` |
 | `player_spawn` | `playerId`, `uid`, `name`, `faction` |
-| `kill` | `relation`, `teamKill`, `victim*` и `killer*` (`Id`, `Uid`, `Name`, `Type`, `Faction`), `weapon`, `distance`, `pos` |
+| `kill` | `relation`, `teamKill`, `victim*` и `killer*` (`Id`, `Uid`, `Name`, `Type`, `Faction`), `weapon`, `weaponSource`, `damageType`, `hitZone`, `distance`, `pos` |
 | `match_end` | `durationSec`, `endReason`, `winners` (ключи фракций) |
 
 `kill` шлётся, если жертва или убийца — игрок. ИИ против ИИ не пишется.
@@ -47,7 +47,10 @@
 - K/D = засчитанные убийства / смерти.
 - Игрок определяется по ID игрока (> 0), а не по `victimType`/`killerType`:
   админ с правами GM приходит как `UNLIMITED_EDITOR`.
-- Оружие — то, что было в руках у убийцы в момент гибели жертвы. Для гранат, мин и техники это неточно.
+- Оружие (`weapon`, способ в `weaponSource`): мод запоминает последнее прямое попадание в персонажа
+  (`OnDamage`, без кровотечения). Взрыв/осколки → боеприпас (`explosive`), наезд → машина (`vehicle`),
+  стрелок в технике → техника (`vehicle`), пуля → оружие в руках (`hands`).
+- Хедшот: зона последнего попадания `Head*` (`hitZone`).
 
 ## Идентификатор игрока
 

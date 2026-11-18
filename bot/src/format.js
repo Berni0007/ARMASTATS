@@ -16,7 +16,8 @@ function weaponName(prefab) {
   if (!prefab) return '—';
   const file = prefab.split('/').pop().replace(/\.et$/i, '');
   const parts = file.split('_');
-  const kinds = ['rifle', 'pistol', 'mg', 'launcher', 'smg', 'shotgun', 'sniper', 'grenade', 'handgun', 'weapon'];
+  const kinds = ['rifle', 'pistol', 'mg', 'launcher', 'smg', 'shotgun', 'sniper', 'grenade', 'handgun', 'weapon',
+    'mine', 'rocket', 'missile', 'explosive', 'charge', 'shell', 'ammo', 'vehicle'];
   if (parts.length > 1 && kinds.includes(parts[0].toLowerCase())) parts.shift();
   return parts[0] || file;
 }
@@ -99,6 +100,7 @@ function playerEmbed(s) {
       { name: 'Дальний килл', value: meters(s.longest), inline: true },
       { name: 'Любимое оружие', value: weaponName(s.favWeapon), inline: true },
       { name: 'Самоубийства', value: `${s.suicides}`, inline: true },
+      { name: 'Хедшоты', value: `${s.headshots}`, inline: true },
     ],
     footer: { text: s.uid },
   };

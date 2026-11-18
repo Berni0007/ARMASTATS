@@ -230,6 +230,7 @@ async function renderPlayer(s) {
   });
 
   const extra = [];
+  if (s.kills) extra.push(`хедшотов ${s.headshots} (${Math.round((100 * s.headshots) / s.kills)}%)`);
   if (s.teamKills) extra.push(`тимкиллов ${s.teamKills}`);
   if (s.suicides) extra.push(`самоубийств ${s.suicides}`);
   if (extra.length) put(ctx, extra.join('    '), X, 884, { font: text(24), color: C.grey });

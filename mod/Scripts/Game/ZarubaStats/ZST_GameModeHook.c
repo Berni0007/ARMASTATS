@@ -176,7 +176,12 @@ modded class SCR_BaseGameMode
 		json.WriteValue("killerType", typename.EnumToString(SCR_ECharacterControlType, ctx.GetKillerCharacterControlType()));
 		json.WriteValue("killerFaction", ZST_Utils.GetEntityFactionKey(killer));
 
-		json.WriteValue("weapon", ZST_Utils.GetCurrentWeapon(killer));
+		string weaponSource, damageType, hitZone;
+		string weapon = ZST_Utils.ResolveWeapon(victim, killer, weaponSource, damageType, hitZone);
+		json.WriteValue("weapon", weapon);
+		json.WriteValue("weaponSource", weaponSource);
+		json.WriteValue("damageType", damageType);
+		json.WriteValue("hitZone", hitZone);
 		json.WriteValue("distance", ZST_Utils.GetDistance(victim, killer));
 
 		if (victim)
