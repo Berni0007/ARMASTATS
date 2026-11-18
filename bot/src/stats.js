@@ -95,6 +95,12 @@ function createStats(db) {
     ),
 
     match: db.prepare('SELECT * FROM matches WHERE match_id = ?'),
+    matchShots: db.prepare('SELECT uid, shots, squad FROM player_match_stats WHERE match_id = ?'),
+    // Отряд из последнего спавна в матче (если счётчики не пришли или в них нет отряда).
+    matchSpawnSquads: db.prepare(
+      `SELECT json_extract(payload, '$.data.uid') AS uid, json_extract(payload, '$.data.squad') AS squad FROM events
+       WHERE match_id = ? AND type = 'player_spawn' ORDER BY ts`
+    ),
     matchPlayers: db.prepare('SELECT uid, name, faction FROM match_players WHERE match_id = ?'),
     matchKillsBy: db.prepare(
       `SELECT killer_uid AS uid,
@@ -379,7 +385,7 @@ function createStats(db) {
 
     const players = new Map();
     for (const p of q.matchPlayers.all(matchId)) {
-      players.set(p.uid, { uid: p.uid, name: p.name, faction: p.faction, kills: 0, pvp: 0, deaths: 0, longest: 0 });
+      players.set(p.uid, { uid: p.uid, name: p.name, faction: p.faction, kills: 0, pvp: 0, deaths: 0, longest: 0, shots: null, squad: '' });
     }
     for (const r of q.matchKillsBy.all(matchId)) {
       const p = players.get(r.uid);
@@ -391,6 +397,17 @@ function createStats(db) {
     for (const r of q.matchDeathsBy.all(matchId)) {
       const p = players.get(r.uid);
       if (p) p.deaths = r.deaths;
+    }
+    // Выстрелы — из личных счётчиков мода (0.4+); null, если мод их не прислал.
+    for (const r of q.matchSpawnSquads.all(matchId)) {
+      const p = players.get(r.uid);
+      if (p && r.squad) p.squad = r.squad;
+    }
+    for (const r of q.matchShots.all(matchId)) {
+      const p = players.get(r.uid);
+      if (!p) continue;
+      p.shots = r.shots;
+      if (r.squad) p.squad = r.squad;
     }
 
     const factions = {};
@@ -413,6 +430,7 @@ function createStats(db) {
       matchId: m.match_id,
       serverId: m.server_id,
       world: m.world || '',
+      title: m.title || '',
       durationSec: m.duration_sec || 0,
       winners: safeJson(m.winners, []),
       endedAt: m.ended_at,

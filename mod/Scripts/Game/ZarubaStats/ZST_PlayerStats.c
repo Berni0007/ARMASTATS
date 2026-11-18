@@ -91,6 +91,8 @@ class ZST_PlayerStats
 		json.WriteValue("revives", c.m_iRevives);
 		json.WriteValue("vehDamage", c.m_fVehDamage);
 		json.WriteValue("vehKills", c.m_iVehKills);
+		// Отряд на момент отправки: игрок мог сменить его по ходу боя.
+		json.WriteValue("squad", ZST_Utils.GetPlayerSquad(playerId));
 		api.Send("player_stats", json);
 	}
 

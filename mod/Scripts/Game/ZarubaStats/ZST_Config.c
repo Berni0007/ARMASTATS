@@ -8,6 +8,8 @@ class ZST_Config
 	string m_sToken = "CHANGE_ME";
 	string m_sServerId = "server-1";
 	bool m_bEnabled = true;
+	// Название для отчётов. Пусто — берётся название сервера из его настроек.
+	string m_sMapName = "";
 
 	//------------------------------------------------------------------------------------------------
 	//! Читает конфиг. Если файла нет, создаёт его со значениями по умолчанию.
@@ -33,6 +35,7 @@ class ZST_Config
 		ctx.ReadValue("token", cfg.m_sToken);
 		ctx.ReadValue("serverId", cfg.m_sServerId);
 		ctx.ReadValue("enabled", cfg.m_bEnabled);
+		ctx.ReadValue("mapName", cfg.m_sMapName);
 		return cfg;
 	}
 
@@ -46,6 +49,7 @@ class ZST_Config
 		ctx.WriteValue("token", m_sToken);
 		ctx.WriteValue("serverId", m_sServerId);
 		ctx.WriteValue("enabled", m_bEnabled);
+		ctx.WriteValue("mapName", m_sMapName);
 		ctx.SaveToFile(FILE);
 	}
 

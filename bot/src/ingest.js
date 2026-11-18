@@ -21,8 +21,8 @@ function createIngest(db) {
     matchPoints: db.prepare('UPDATE matches SET points_end = ? WHERE match_id = ?'),
     seen: db.prepare('SELECT 1 FROM events WHERE event_id = ?'),
     matchStart: db.prepare(
-      `INSERT INTO matches (match_id, server_id, world, started_at) VALUES (?, ?, ?, ?)
-       ON CONFLICT(match_id) DO UPDATE SET world = excluded.world, started_at = excluded.started_at`
+      `INSERT INTO matches (match_id, server_id, world, started_at, title) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(match_id) DO UPDATE SET world = excluded.world, started_at = excluded.started_at, title = excluded.title`
     ),
     matchEnsure: db.prepare(
       'INSERT OR IGNORE INTO matches (match_id, server_id, started_at) VALUES (?, ?, ?)'
@@ -41,12 +41,13 @@ function createIngest(db) {
          faction = COALESCE(NULLIF(excluded.faction, ''), match_players.faction)`
     ),
     playerCounters: db.prepare(
-      `INSERT INTO player_match_stats (match_id, uid, assists, hits, shots, captures, revives, veh_damage, veh_kills)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO player_match_stats (match_id, uid, assists, hits, shots, captures, revives, veh_damage, veh_kills, squad)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(match_id, uid) DO UPDATE SET
          assists = MAX(assists, excluded.assists), hits = MAX(hits, excluded.hits), shots = MAX(shots, excluded.shots),
          captures = MAX(captures, excluded.captures), revives = MAX(revives, excluded.revives),
-         veh_damage = MAX(veh_damage, excluded.veh_damage), veh_kills = MAX(veh_kills, excluded.veh_kills)`
+         veh_damage = MAX(veh_damage, excluded.veh_damage), veh_kills = MAX(veh_kills, excluded.veh_kills),
+         squad = CASE WHEN excluded.squad <> '' THEN excluded.squad ELSE squad END`
     ),
     kill: db.prepare(
       `INSERT INTO kills (match_id, server_id, ts, relation, team_kill,
@@ -84,7 +85,7 @@ function createIngest(db) {
 
       switch (type) {
         case 'match_start':
-          if (matchId) q.matchStart.run(matchId, serverId, str(d.world), ts);
+          if (matchId) q.matchStart.run(matchId, serverId, str(d.world), ts, str(d.title));
           break;
 
         case 'player_join':
@@ -127,7 +128,7 @@ function createIngest(db) {
             q.playerCounters.run(
               matchId, str(d.uid),
               num(d.assists, 0), num(d.hits, 0), num(d.shots, 0), num(d.captures, 0),
-              num(d.revives, 0), num(d.vehDamage, 0), num(d.vehKills, 0)
+              num(d.revives, 0), num(d.vehDamage, 0), num(d.vehKills, 0), str(d.squad)
             );
           }
           break;

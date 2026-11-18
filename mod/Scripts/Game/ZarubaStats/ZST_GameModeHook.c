@@ -30,6 +30,11 @@ modded class SCR_BaseGameMode
 		if (json)
 		{
 			json.WriteValue("world", GetGame().GetWorldFile());
+			// Название для отчёта: вручную из конфига (mapName), иначе — название сервера.
+			string title = api.GetConfig().m_sMapName;
+			if (title.IsEmpty())
+				title = ZST_Utils.GetServerName();
+			json.WriteValue("title", title);
 			api.Send("match_start", json);
 		}
 
@@ -152,6 +157,7 @@ modded class SCR_BaseGameMode
 		json.WriteValue("name", ZST_Utils.GetPlayerName(playerId));
 		json.WriteValue("faction", ZST_Utils.GetPlayerFactionKey(playerId));
 		json.WriteValue("role", ZST_Utils.GetPlayerRole(playerId));
+		json.WriteValue("squad", ZST_Utils.GetPlayerSquad(playerId));
 		api.Send("player_spawn", json);
 
 		ZST_PlayerStats.GetInstance().WatchShots(controlledEntity);

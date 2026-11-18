@@ -116,12 +116,17 @@ function open(file) {
   if (!cols.includes('event_id')) db.exec('ALTER TABLE events ADD COLUMN event_id TEXT');
   // Миграция: владельцы точек на конец матча (мод 0.3+).
   const mcols = db.prepare('PRAGMA table_info(matches)').all().map((c) => c.name);
+  // Миграция: название для отчёта (название сервера или mapName из конфига мода, мод 0.5+).
+  if (!mcols.includes('title')) db.exec("ALTER TABLE matches ADD COLUMN title TEXT NOT NULL DEFAULT ''");
   if (!mcols.includes('points_end')) db.exec("ALTER TABLE matches ADD COLUMN points_end TEXT NOT NULL DEFAULT ''");
   // Миграция: чем и куда убили (мод 0.1.1+).
   const kcols = db.prepare('PRAGMA table_info(kills)').all().map((c) => c.name);
   for (const col of ['weapon_source', 'damage_type', 'hit_zone', 'weapon_name']) {
     if (!kcols.includes(col)) db.exec(`ALTER TABLE kills ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`);
   }
+  // Миграция: отряд игрока в матче (мод 0.5+).
+  const pcols = db.prepare('PRAGMA table_info(player_match_stats)').all().map((c) => c.name);
+  if (!pcols.includes('squad')) db.exec("ALTER TABLE player_match_stats ADD COLUMN squad TEXT NOT NULL DEFAULT ''");
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS events_event_id ON events(event_id) WHERE event_id IS NOT NULL');
   // Исправление старых записей: убийство союзника (в т.ч. бота) — тимкилл.
   db.exec("UPDATE kills SET team_kill = 1 WHERE team_kill = 0 AND relation LIKE '%FRIENDLY%'");

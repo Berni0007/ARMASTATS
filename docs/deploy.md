@@ -58,9 +58,13 @@ curl https://warcon.zaruba-server.online/armastats/health
   "apiUrl": "https://warcon.zaruba-server.online/armastats",
   "token": "тот же STATS_TOKEN",
   "serverId": "zaruba-1",
-  "enabled": true
+  "enabled": true,
+  "mapName": ""
 }
 ```
+
+`mapName` — название для отчётов. Пусто — берётся название сервера из его настроек.
+Применяется со следующего матча.
 
 ## 6. Discord-бот
 

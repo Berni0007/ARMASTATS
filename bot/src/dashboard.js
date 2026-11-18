@@ -281,7 +281,7 @@ async function renderDashboard(d) {
     const P = (v) => v * ts;
 
     // Плашка: карта | игроки | длительность
-    const info = [b.world(d.world), `${d.playerCount} ${plural(d.playerCount, 'игрок', 'игрока', 'игроков')}`, `Длительность ${hms(d.durationSec, true)}`];
+    const info = [d.title || b.world(d.world), `${d.playerCount} ${plural(d.playerCount, 'игрок', 'игрока', 'игроков')}`, `Длительность ${hms(d.durationSec, true)}`];
     let fs = P(17.5);
     const room = P(1458 - 950);
     const gap = P(26);
@@ -336,7 +336,7 @@ async function renderDashboard(d) {
   x.restore();
   T(b.subtitle, 30, 332, 96, '#aeb4bb', 400);
 
-  const info = [b.world(d.world), `${d.playerCount} ${plural(d.playerCount, 'игрок', 'игрока', 'игроков')}`, `Длительность ${hms(d.durationSec, true)}`];
+  const info = [d.title || b.world(d.world), `${d.playerCount} ${plural(d.playerCount, 'игрок', 'игрока', 'игроков')}`, `Длительность ${hms(d.durationSec, true)}`];
   x.font = '400 24px Roboto';
   const iw = info.reduce((a, s) => a + x.measureText(s).width, 0) + 2 * 44 + 96;
   const ix = W - 40 - iw;
@@ -749,6 +749,167 @@ async function renderDashboard(d) {
   });
 
   T(`${b.footer}    ${d.serverId}    ${stamp(d.endedAt)}`, 18, W - 36, H - 14, C.dim, 400, 'right');
+  return withRoster(canvas, d, b);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Список игроков под основной картинкой: по стороне на колонку (НАТО слева, РФ справа),
+// внутри — по отрядам (сильнейший отряд выше), в отряде — по убийствам.
+// До 128 игроков: если строк на стороне больше MAX_ROWS, колонка делится надвое.
+const ROW = 30;
+const ROSTER_TOP = 24;
+const MAX_ROWS = 34;
+
+function byKills(p, q) {
+  return q.kills - p.kills || p.deaths - q.deaths || p.name.localeCompare(q.name);
+}
+
+// Строки стороны: заголовки отрядов и игроки. Без данных об отрядах — просто список.
+function sideRows(list) {
+  if (!list.some((p) => p.squad)) return list.sort(byKills).map((p, i) => ({ p, n: i + 1 }));
+  const squads = new Map();
+  for (const p of list) {
+    const k = p.squad || '';
+    if (!squads.has(k)) squads.set(k, []);
+    squads.get(k).push(p);
+  }
+  const order = [...squads.entries()].sort(([a, pa], [b, pb]) => {
+    if (!a !== !b) return a ? -1 : 1; // «Без отряда» — в конце
+    const ka = pa.reduce((s, p) => s + p.kills, 0);
+    const kb = pb.reduce((s, p) => s + p.kills, 0);
+    return kb - ka || a.localeCompare(b);
+  });
+  const rows = [];
+  for (const [name, members] of order) {
+    members.sort(byKills);
+    rows.push({ squad: name || 'Без отряда', count: members.length, kills: members.reduce((s, p) => s + p.kills, 0) });
+    members.forEach((p, i) => rows.push({ p, n: i + 1 }));
+  }
+  return rows;
+}
+
+// Делим строки на две колонки. С отрядами режем только по границе отряда,
+// ближайшей к середине, чтобы отряд не разрывался между колонками.
+function splitRows(rows) {
+  if (rows.length <= MAX_ROWS) return [rows];
+  const half = Math.ceil(rows.length / 2);
+  const starts = rows.map((r, i) => (r.squad ? i : -1)).filter((i) => i > 0);
+  if (!starts.length) return [rows.slice(0, half), rows.slice(half)];
+  const cut = starts.reduce((best, i) => (Math.abs(i - half) < Math.abs(best - half) ? i : best));
+  return [rows.slice(0, cut), rows.slice(cut)];
+}
+
+function rosterGroups(d, b) {
+  const by = new Map();
+  for (const p of d.players || []) {
+    const key = p.faction || '';
+    if (!by.has(key)) by.set(key, []);
+    by.get(key).push(p);
+  }
+  const keys = [...by.keys()].sort((p, q) => {
+    const ip = p ? b.order.indexOf(p) : 98;
+    const iq = q ? b.order.indexOf(q) : 98;
+    return (ip === -1 ? 97 : ip) - (iq === -1 ? 97 : iq);
+  });
+  return keys.map((key) => {
+    const list = by.get(key);
+    return {
+      title: key ? b.faction(key).name : 'Без стороны',
+      color: key ? b.faction(key).color : C.dim,
+      count: list.length,
+      cols: splitRows(sideRows(list)),
+    };
+  });
+}
+
+async function withRoster(base, d, b) {
+  const groups = rosterGroups(d, b);
+  if (!groups.length) return base.encode('png');
+
+  const GW = (W - 36 * 2 - 24) / 2;
+  const panelH = (g) => 70 + 40 + Math.max(...g.cols.map((c) => c.length)) * ROW + 20;
+  const rows = [];
+  for (let i = 0; i < groups.length; i += 2) rows.push(groups.slice(i, i + 2));
+  const rowsH = rows.map((r) => Math.max(...r.map(panelH)));
+  const extra = ROSTER_TOP + rowsH.reduce((a, h) => a + h + 24, 0) + 20;
+
+  const canvas = createCanvas(W, H + extra);
+  const x = canvas.getContext('2d');
+  x.textBaseline = 'middle';
+  const { T, rr } = makeDraw(x);
+
+  // Фон списка — продолжение фона картинки (низ, растянутый и затемнённый).
+  x.fillStyle = C.bg;
+  x.fillRect(0, 0, W, H + extra);
+  x.drawImage(base, 0, H - 4, W, 4, 0, H, W, extra);
+  x.fillStyle = 'rgba(10,12,15,0.55)';
+  x.fillRect(0, H, W, extra);
+  x.drawImage(base, 0, 0);
+
+  const kd = (p) => (p.deaths > 0 ? p.kills / p.deaths : p.kills).toFixed(2);
+  let Y = H + ROSTER_TOP;
+  rows.forEach((row, ri) => {
+    row.forEach((g, gi) => {
+      const X = 36 + gi * (GW + 24);
+      rr(X, Y, GW, rowsH[ri], 14);
+      x.fillStyle = C.panel;
+      x.fill();
+      x.strokeStyle = C.line;
+      x.lineWidth = 1.5;
+      x.stroke();
+      x.fillStyle = g.color;
+      x.fillRect(X + 20, Y + 22, 6, 26);
+      T(g.title, 30, X + 38, Y + 35, C.white, 600);
+      T(`${g.count} ${plural(g.count, 'боец', 'бойца', 'бойцов')}`, 20, X + GW - 24, Y + 35, C.grey, 400, 'right');
+      x.fillStyle = C.line;
+      x.fillRect(X + 20, Y + 64, GW - 40, 1);
+
+      const n = g.cols.length;
+      const cw = (GW - 40 - (n - 1) * 24) / n;
+      // Колонки: # | ник | уб | см | K/D | патроны — правые края от ширины колонки.
+      const cols = n === 1
+        ? { name: 44, kills: cw - 330, deaths: cw - 240, kd: cw - 140, shots: cw - 4 }
+        : { name: 34, kills: cw - 192, deaths: cw - 144, kd: cw - 80, shots: cw - 2 };
+      const fs = n === 1 ? 19 : 17;
+      const fsz = n === 1 ? 20 : 18;
+      g.cols.forEach((list, c) => {
+        const cx = X + 20 + c * (cw + 24);
+        const hy = Y + 92;
+        T('#', fs, cx + 4, hy, C.dim);
+        T('Игрок', fs, cx + cols.name, hy, C.dim);
+        T('Уб.', fs, cx + cols.kills, hy, C.dim, 400, 'right');
+        T('См.', fs, cx + cols.deaths, hy, C.dim, 400, 'right');
+        T('K/D', fs, cx + cols.kd, hy, C.dim, 400, 'right');
+        T('Патроны', fs, cx + cols.shots, hy, C.dim, 400, 'right');
+        list.forEach((r, i) => {
+          const ry = hy + 32 + i * ROW;
+          if (r.squad) {
+            // Заголовок отряда: полоса цвета стороны, название, бойцов и убийств отряда.
+            x.fillStyle = 'rgba(255,255,255,0.07)';
+            x.fillRect(cx, ry - ROW / 2 + 2, cw, ROW - 4);
+            x.fillStyle = g.color;
+            x.fillRect(cx, ry - ROW / 2 + 2, 3, ROW - 4);
+            T(r.squad, fsz, cx + 12, ry, C.white, 600, 'left', cw - 200);
+            T(`${r.count} ${plural(r.count, 'боец', 'бойца', 'бойцов')} · ${r.kills} уб.`, fs, cx + cw - 4, ry, C.grey, 400, 'right');
+            return;
+          }
+          const p = r.p;
+          if (r.n % 2 === 1) {
+            x.fillStyle = 'rgba(255,255,255,0.03)';
+            x.fillRect(cx, ry - ROW / 2, cw, ROW);
+          }
+          T(String(r.n), fsz, cx + 4, ry, C.dim);
+          T(p.name, fsz, cx + cols.name, ry, C.white, 500, 'left', cols.kills - cols.name - 40);
+          T(String(p.kills), fsz, cx + cols.kills, ry, C.white, 500, 'right');
+          T(String(p.deaths), fsz, cx + cols.deaths, ry, C.grey, 400, 'right');
+          T(kd(p), fsz, cx + cols.kd, ry, C.white, 500, 'right');
+          T(p.shots != null ? num(p.shots) : '—', fsz, cx + cols.shots, ry, C.grey, 400, 'right');
+        });
+      });
+    });
+    Y += rowsH[ri] + 24;
+  });
+
   return canvas.encode('png');
 }
 

@@ -112,6 +112,52 @@ class ZST_Utils
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! Название сервера из его настроек (server config → name). Пусто в Workbench и локальной игре.
+	static string GetServerName()
+	{
+		BackendApi backend = GetGame().GetBackendApi();
+		if (!backend)
+			return string.Empty;
+
+		DSSession session = backend.GetDSSession();
+		if (!session)
+			return string.Empty;
+
+		return session.Name();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Отряд игрока: своё название отряда, иначе позывной (например «Альфа 1-1»). Пусто — не в отряде.
+	static string GetPlayerSquad(int playerId)
+	{
+		SCR_GroupsManagerComponent groups = SCR_GroupsManagerComponent.GetInstance();
+		if (!groups)
+			return string.Empty;
+
+		SCR_AIGroup group = groups.GetPlayerGroup(playerId);
+		if (!group)
+			return string.Empty;
+
+		string name = group.GetCustomName();
+		if (!name.IsEmpty())
+			return name;
+
+		SCR_CallsignGroupComponent callsign = SCR_CallsignGroupComponent.Cast(group.FindComponent(SCR_CallsignGroupComponent));
+		if (callsign)
+		{
+			string company, platoon, squad, character, format;
+			callsign.GetCallsignNames(company, platoon, squad, character, format);
+			name = WidgetManager.Translate(format, WidgetManager.Translate(company), WidgetManager.Translate(platoon), WidgetManager.Translate(squad), "");
+			name = name.Trim();
+		}
+
+		if (name.IsEmpty())
+			name = "Отряд " + group.GetGroupID();
+
+		return name;
+	}
+
+	//------------------------------------------------------------------------------------------------
 	//! Роль игрока = название выбранного набора снаряжения (лоадаута). Пусто, если не определить.
 	static string GetPlayerRole(int playerId)
 	{
