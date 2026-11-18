@@ -249,14 +249,25 @@ async function renderDashboard(d) {
 
   const info = [b.world(d.world), `${d.playerCount} ${plural(d.playerCount, 'игрок', 'игрока', 'игроков')}`, `Длительность ${hms(d.durationSec)}`];
   x.font = '400 26px Oswald';
-  const iw = info.reduce((a, s) => a + x.measureText(s).width, 0) + 120 + 60;
+  const iw = info.reduce((a, s) => a + x.measureText(s).width, 0) + 120 + 60 + 30;
   const ix = W - 36 - iw;
   rr(ix, 36, iw, 58, 29);
   x.fillStyle = 'rgba(255,255,255,0.05)';
   x.fill();
   x.strokeStyle = C.line;
   x.stroke();
-  let px = ix + 30;
+  // Метка на карте перед названием
+  x.fillStyle = C.grey;
+  x.beginPath();
+  x.arc(ix + 36, 60, 9, Math.PI * 0.85, Math.PI * 2.15);
+  x.lineTo(ix + 36, 77);
+  x.closePath();
+  x.fill();
+  x.fillStyle = '#1b1e23';
+  x.beginPath();
+  x.arc(ix + 36, 60, 3.5, 0, 7);
+  x.fill();
+  let px = ix + 60;
   info.forEach((s, i) => {
     px += T(s, 26, px, 65);
     if (i < info.length - 1) {
@@ -269,7 +280,13 @@ async function renderDashboard(d) {
   // Две главные стороны: по участию в бою
   const sides = Object.entries(d.factions)
     .map(([key, v]) => ({ key, ...v, f: b.faction(key) }))
-    .sort((p, q) => q.kills + q.deaths - (p.kills + p.deaths));
+    .sort((p, q) => {
+      // Сначала по порядку из настроек (НАТО слева, РФ справа), остальные — по участию в бою.
+      const ip = b.order.indexOf(p.key);
+      const iq = b.order.indexOf(q.key);
+      if (ip !== -1 || iq !== -1) return (ip === -1 ? 99 : ip) - (iq === -1 ? 99 : iq);
+      return q.kills + q.deaths - (p.kills + p.deaths);
+    });
   const neutral = { name: '', subtitle: '', color: '#555a62' };
   const left = sides[0] || { key: '', kills: 0, deaths: 0, f: neutral };
   const right = sides[1] || null;

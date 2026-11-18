@@ -5,7 +5,7 @@
 const COLOR_MATCH = 0xe87820; // оранжевый ZARUBA
 const COLOR_PLAYER = 0x378add;
 
-const FACTION_NAMES = { US: 'США', USSR: 'СССР', FIA: 'FIA' };
+const FACTION_NAMES = { US: 'НАТО', USSR: 'РФ', FIA: 'FIA' };
 
 function factionName(key) {
   return FACTION_NAMES[key] || key || '?';

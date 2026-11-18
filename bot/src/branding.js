@@ -17,11 +17,14 @@ const DEFAULTS = {
   title: 'СТАТИСТИКА БОЯ',
   subtitle: 'Матч завершён',
   footer: 'ARMASTATS',
+  // Ключ — сторона в игре (US, USSR, FIA...). На сервере ZARUBA: US — НАТО, USSR — РФ.
   factions: {
-    US: { name: 'США', subtitle: 'Силы США', color: '#4f86c6' },
-    USSR: { name: 'СССР', subtitle: 'Советская армия', color: '#c84b3b' },
-    FIA: { name: 'FIA', subtitle: 'Партизаны', color: '#6fae5f' },
+    US: { name: 'НАТО', subtitle: 'Западные силы', color: '#4f86c6' },
+    USSR: { name: 'РФ', subtitle: 'Вооружённые силы РФ', color: '#c84b3b' },
+    FIA: { name: 'FIA', subtitle: 'Ополчение', color: '#6fae5f' },
   },
+  // Порядок сторон: первая — слева в баннере, вторая — справа.
+  order: ['US', 'USSR', 'FIA'],
   // Красивые названия карт: ключ — имя файла мира без .ent
   worlds: {},
 };
@@ -82,6 +85,7 @@ async function loadBranding() {
     logo: (await image(firstExisting(['logo.png', 'logo.jpg']))) || (await image(path.join(ASSETS, 'logo.jpg'))),
     soldier: await image(path.join(ASSETS, 'template.png')),
     emblem: (key) => image(firstExisting([`emblems/${key}.png`, `emblems/${key}.jpg`])),
+    order: cfg.order || DEFAULTS.order,
     faction(key) {
       const f = cfg.factions[key];
       return { name: (f && f.name) || key || '?', subtitle: (f && f.subtitle) || '', color: (f && f.color) || '#e87820' };

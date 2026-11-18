@@ -22,8 +22,8 @@ const C = {
 };
 
 const FACTIONS = {
-  USSR: { name: 'СССР', color: '#d04a38' },
-  US: { name: 'США', color: '#5488c4' },
+  USSR: { name: 'РФ', color: '#d04a38' },
+  US: { name: 'НАТО', color: '#5488c4' },
   FIA: { name: 'FIA', color: '#6fa05a' },
 };
 
